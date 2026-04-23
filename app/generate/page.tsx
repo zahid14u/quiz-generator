@@ -5,6 +5,7 @@ import Link from "next/link";
 import { type FormEvent, useEffect, useState } from "react";
 
 type QuizQuestion = {
+  type?: "mcq" | "truefalse" | "fillinblanks" | "shortanswer";
   question: string;
   options: string[];
   answer: string;
@@ -57,14 +58,40 @@ const loadingMessages = [
   "Almost ready...",
 ];
 
+function normalizeQuestionType(
+  rawType: unknown,
+  fallbackType: QuizQuestion["type"],
+): NonNullable<QuizQuestion["type"]> {
+  if (
+    rawType === "mcq" ||
+    rawType === "truefalse" ||
+    rawType === "fillinblanks" ||
+    rawType === "shortanswer"
+  ) {
+    return rawType;
+  }
+
+  return fallbackType ?? "mcq";
+}
+
+function getTypeLabel(type: NonNullable<QuizQuestion["type"]>): string {
+  if (type === "truefalse") return "True/False";
+  if (type === "fillinblanks") return "Fill in the blank";
+  if (type === "shortanswer") return "Short answer";
+  return "MCQ";
+}
+
 export default function GeneratePage() {
   const [topic, setTopic] = useState("");
   const [questionCount, setQuestionCount] = useState("10");
-  const [questionType, setQuestionType] = useState("MCQ");
+  const [questionType, setQuestionType] = useState("mcq");
   const [difficulty, setDifficulty] = useState("Medium");
   const [isGenerating, setIsGenerating] = useState(false);
   const [quizResults, setQuizResults] = useState<QuizQuestion[]>([]);
   const [openAnswers, setOpenAnswers] = useState<Record<number, boolean>>({});
+  const [shortAnswerDrafts, setShortAnswerDrafts] = useState<
+    Record<number, string>
+  >({});
   const [errorMessage, setErrorMessage] = useState("");
   const [downloadMessage, setDownloadMessage] = useState("");
   const [isCopied, setIsCopied] = useState(false);
@@ -73,8 +100,10 @@ export default function GeneratePage() {
   const [dailyQuizCount, setDailyQuizCount] = useState(0);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showPostGenerateNudge, setShowPostGenerateNudge] = useState(true);
+  const [isLocalhost, setIsLocalhost] = useState(false);
+  const [isPro, setIsPro] = useState(false);
 
-  const isFreeUser = true;
+  const isFreeUser = !isPro;
   const hasReachedDailyLimit = isFreeUser && dailyQuizCount >= FREE_QUIZ_DAILY_LIMIT;
 
   const getTodayDate = () => new Date().toISOString().split("T")[0];
@@ -99,6 +128,14 @@ export default function GeneratePage() {
 
     return () => clearInterval(intervalId);
   }, [isGenerating]);
+
+  useEffect(() => {
+    const localhost = window.location.hostname === "localhost";
+    setIsLocalhost(localhost);
+    if (localhost && localStorage.getItem("quizai_pro") === "true") {
+      setIsPro(true);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -162,6 +199,7 @@ export default function GeneratePage() {
           topic,
           numQuestions: safeQuestionCount,
           difficulty,
+          questionType,
         }),
       });
 
@@ -175,18 +213,42 @@ export default function GeneratePage() {
         throw new Error("Invalid quiz data format returned by server.");
       }
 
-      const validatedQuiz = data.filter(
-        (item): item is QuizQuestion =>
-          typeof item?.question === "string" &&
-          Array.isArray(item?.options) &&
-          item.options.length === 4 &&
-          item.options.every((option: unknown) => typeof option === "string") &&
-          typeof item?.answer === "string",
-      );
+      const fallbackType: NonNullable<QuizQuestion["type"]> =
+        questionType === "mixed"
+          ? "mcq"
+          : normalizeQuestionType(questionType, "mcq");
+
+      const validatedQuiz = data
+        .filter(
+          (item: unknown): item is Record<string, unknown> =>
+            typeof item === "object" && item !== null,
+        )
+        .map((item) => {
+          const type = normalizeQuestionType(item.type, fallbackType);
+          const options = Array.isArray(item.options)
+            ? item.options.filter((option): option is string => typeof option === "string")
+            : [];
+
+          return {
+            type,
+            question: typeof item.question === "string" ? item.question : "",
+            options,
+            answer: typeof item.answer === "string" ? item.answer : "",
+          } satisfies QuizQuestion;
+        })
+        .filter((item) => {
+          if (!item.question || !item.answer) return false;
+          if (item.type === "shortanswer") return true;
+          if (item.type === "truefalse") return item.options.length >= 2;
+          return item.options.length >= 4;
+        });
 
       const quizToShow = validatedQuiz.length > 0 ? validatedQuiz : mockQuiz;
       setQuizResults(quizToShow);
-      setShowPostGenerateNudge(true);
+      setShortAnswerDrafts({});
+      if (isFreeUser) {
+        setShowPostGenerateNudge(true);
+      }
       if (validatedQuiz.length === 0) {
         setErrorMessage(
           "AI returned an unexpected format, so fallback mock questions are shown.",
@@ -273,19 +335,26 @@ export default function GeneratePage() {
     y += 4;
 
     quizResults.forEach((item, index) => {
+      const resolvedType = normalizeQuestionType(item.type, "mcq");
       const questionLines = doc.splitTextToSize(
         `${index + 1}. ${item.question}`,
         maxWidth,
       ) as string[];
       writeLines(questionLines, 12);
 
-      item.options.forEach((option, optionIndex) => {
-        const optionLines = doc.splitTextToSize(
-          `${optionLabels[optionIndex]}. ${option}`,
-          maxWidth - 8,
-        ) as string[];
-        writeLines(optionLines.map((line) => `  ${line}`), 11);
-      });
+      if (resolvedType === "shortanswer") {
+        writeLines(["  ________________________________", "  ________________________________"], 11);
+      } else if (resolvedType === "truefalse") {
+        writeLines(["  True", "  False"], 11);
+      } else {
+        item.options.forEach((option, optionIndex) => {
+          const optionLines = doc.splitTextToSize(
+            `${optionLabels[optionIndex]}. ${option}`,
+            maxWidth - 8,
+          ) as string[];
+          writeLines(optionLines.map((line) => `  ${line}`), 11);
+        });
+      }
 
       // Blank line between each question for readability.
       y += 4;
@@ -298,8 +367,9 @@ export default function GeneratePage() {
     y += 10;
 
     quizResults.forEach((item, index) => {
+      const resolvedType = normalizeQuestionType(item.type, "mcq");
       const answerLines = doc.splitTextToSize(
-        `${index + 1}. ${item.answer}`,
+        `${index + 1}. [${getTypeLabel(resolvedType)}] ${item.answer}`,
         maxWidth,
       ) as string[];
       writeLines(answerLines, 12);
@@ -319,15 +389,37 @@ export default function GeneratePage() {
       `QuizAI — ${topic || "Untitled"} Quiz`,
       `Difficulty: ${difficulty} | Questions: ${quizResults.length}`,
       "",
-      ...quizResults.flatMap((item, index) => [
-        `${index + 1}. ${item.question}`,
-        `   A. ${item.options[0]}`,
-        `   B. ${item.options[1]}`,
-        `   C. ${item.options[2]}`,
-        `   D. ${item.options[3]}`,
-        `   Answer: ${item.answer}`,
-        "",
-      ]),
+      ...quizResults.flatMap((item, index) => {
+        const resolvedType = normalizeQuestionType(item.type, "mcq");
+        if (resolvedType === "shortanswer") {
+          return [
+            `${index + 1}. [Short answer] ${item.question}`,
+            "   Student answer: ________________________________",
+            `   Model answer: ${item.answer}`,
+            "",
+          ];
+        }
+
+        if (resolvedType === "truefalse") {
+          return [
+            `${index + 1}. [True/False] ${item.question}`,
+            "   True",
+            "   False",
+            `   Answer: ${item.answer}`,
+            "",
+          ];
+        }
+
+        return [
+          `${index + 1}. [${getTypeLabel(resolvedType)}] ${item.question}`,
+          `   A. ${item.options[0] ?? ""}`,
+          `   B. ${item.options[1] ?? ""}`,
+          `   C. ${item.options[2] ?? ""}`,
+          `   D. ${item.options[3] ?? ""}`,
+          `   Answer: ${item.answer}`,
+          "",
+        ];
+      }),
     ].join("\n");
 
     try {
@@ -378,16 +470,20 @@ export default function GeneratePage() {
   };
 
   const handleQuestionTypeChange = (value: string) => {
-    if (
-      isFreeUser &&
-      value !== "MCQ"
-    ) {
-      setQuestionType("MCQ");
+    if (isFreeUser && value !== "mcq") {
+      setQuestionType("mcq");
       setShowUpgradeModal(true);
       return;
     }
 
     setQuestionType(value);
+  };
+
+  const getTypeBadgeClass = (type: NonNullable<QuizQuestion["type"]>) => {
+    if (type === "truefalse") return "bg-blue-100 text-blue-700";
+    if (type === "fillinblanks") return "bg-purple-100 text-purple-700";
+    if (type === "shortanswer") return "bg-green-100 text-green-700";
+    return "bg-slate-100 text-slate-700";
   };
 
   return (
@@ -432,6 +528,13 @@ export default function GeneratePage() {
               <Link href="/pricing" className="font-semibold underline underline-offset-2">
                 Upgrade to Pro
               </Link>
+            </div>
+          </div>
+        )}
+        {isPro && (
+          <div className="bg-green-600 px-4 py-2 text-xs text-white sm:text-sm">
+            <div className="mx-auto w-full max-w-6xl sm:px-2">
+              Pro plan active (test mode)
             </div>
           </div>
         )}
@@ -491,10 +594,10 @@ export default function GeneratePage() {
                     >
                       <option value="5">5</option>
                       <option value="10">10</option>
-                      <option value="15">15 (Pro)</option>
-                      <option value="20">20 (Pro)</option>
-                      <option value="25">25 (Pro)</option>
-                      <option value="30">30 (Pro)</option>
+                      <option value="15">{isFreeUser ? "15 (Pro)" : "15"}</option>
+                      <option value="20">{isFreeUser ? "20 (Pro)" : "20"}</option>
+                      <option value="25">{isFreeUser ? "25 (Pro)" : "25"}</option>
+                      <option value="30">{isFreeUser ? "30 (Pro)" : "30"}</option>
                     </select>
                   </div>
 
@@ -535,26 +638,38 @@ export default function GeneratePage() {
                     }
                     className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
                   >
-                    <option value="MCQ">MCQ</option>
-                    <option value="True/False">True/False (Pro)</option>
-                    <option value="Fill in the Blanks">Fill in the Blanks (Pro)</option>
-                    <option value="Short Answer">Short Answer (Pro)</option>
-                    <option value="Mixed">Mixed question types (Pro)</option>
+                    <option value="mcq">MCQ</option>
+                    <option value="truefalse">
+                      {isFreeUser ? "True/False (Pro)" : "True/False"}
+                    </option>
+                    <option value="fillinblanks">
+                      {isFreeUser
+                        ? "Fill in the Blanks (Pro)"
+                        : "Fill in the Blanks"}
+                    </option>
+                    <option value="shortanswer">
+                      {isFreeUser ? "Short Answer (Pro)" : "Short Answer"}
+                    </option>
+                    <option value="mixed">
+                      {isFreeUser
+                        ? "Mixed question types (Pro)"
+                        : "Mixed question types"}
+                    </option>
                   </select>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isGenerating || hasReachedDailyLimit}
+                  disabled={isGenerating || (isFreeUser && hasReachedDailyLimit)}
                   className="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-8 py-4 text-lg font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
                   {isGenerating
                     ? "Generating..."
-                    : hasReachedDailyLimit
+                    : isFreeUser && hasReachedDailyLimit
                       ? "Daily Limit Reached"
                       : "Generate Quiz"}
                 </button>
-                {hasReachedDailyLimit && (
+                {isFreeUser && hasReachedDailyLimit && (
                   <p className="text-center text-sm text-slate-600">
                     Upgrade to Pro for unlimited quizzes
                   </p>
@@ -629,45 +744,124 @@ export default function GeneratePage() {
                     </button>
                   </div>
 
-                  {quizResults.map((item, index) => (
-                    <article
-                      key={`${item.question}-${index}`}
-                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
-                    >
-                      <h3 className="text-lg font-semibold">
-                        {index + 1}. {item.question}
-                      </h3>
+                  {quizResults.map((item, index) => {
+                    const resolvedType = normalizeQuestionType(item.type, "mcq");
+                    const questionParts =
+                      resolvedType === "fillinblanks"
+                        ? item.question.split("_______")
+                        : [item.question];
 
-                      <ul className="mt-4 space-y-2">
-                        {item.options.map((option, optionIndex) => (
-                          <li
-                            key={`${item.question}-${option}`}
-                            className="rounded-md border border-slate-200 px-4 py-2 text-slate-700"
-                          >
-                            <span className="mr-2 font-medium">
-                              {optionLabels[optionIndex]}.
-                            </span>
-                            {option}
-                          </li>
-                        ))}
-                      </ul>
-
-                      <button
-                        type="button"
-                        onClick={() => toggleAnswer(index)}
-                        className="mt-5 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                    return (
+                      <article
+                        key={`${item.question}-${index}`}
+                        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
                       >
-                        {openAnswers[index] ? "Hide Answer" : "Show Answer"}
-                      </button>
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getTypeBadgeClass(
+                              resolvedType,
+                            )}`}
+                          >
+                            {getTypeLabel(resolvedType)}
+                          </span>
+                        </div>
 
-                      {openAnswers[index] && (
-                        <p className="mt-3 rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                          <span className="font-semibold">Correct Answer:</span>{" "}
-                          {item.answer}
-                        </p>
-                      )}
-                    </article>
-                  ))}
+                        {(resolvedType === "fillinblanks" ||
+                          resolvedType === "shortanswer") && (
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            {resolvedType === "fillinblanks"
+                              ? "Fill in the blank"
+                              : "Short answer"}
+                          </p>
+                        )}
+
+                        <h3 className="text-lg font-semibold">
+                          {index + 1}.{" "}
+                          {resolvedType === "fillinblanks" ? (
+                            <>
+                              {questionParts[0]}
+                              <span className="font-bold text-purple-700">_______</span>
+                              {questionParts.slice(1).join("_______")}
+                            </>
+                          ) : (
+                            item.question
+                          )}
+                        </h3>
+
+                        {resolvedType === "truefalse" && (
+                          <div className="mt-4 grid grid-cols-2 gap-3">
+                            <button
+                              type="button"
+                              className="rounded-full border-2 border-blue-400 px-4 py-2 font-semibold text-blue-700 transition hover:bg-blue-50"
+                            >
+                              True
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-full border-2 border-blue-400 px-4 py-2 font-semibold text-blue-700 transition hover:bg-blue-50"
+                            >
+                              False
+                            </button>
+                          </div>
+                        )}
+
+                        {(resolvedType === "mcq" || resolvedType === "fillinblanks") && (
+                          <ul className="mt-4 space-y-2">
+                            {item.options.slice(0, 4).map((option, optionIndex) => (
+                              <li
+                                key={`${item.question}-${option}`}
+                                className="rounded-md border border-slate-200 px-4 py-2 text-slate-700"
+                              >
+                                <span className="mr-2 font-medium">
+                                  {optionLabels[optionIndex]}.
+                                </span>
+                                {option}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
+                        {resolvedType === "shortanswer" && (
+                          <textarea
+                            value={shortAnswerDrafts[index] ?? ""}
+                            onChange={(event) =>
+                              setShortAnswerDrafts((prev) => ({
+                                ...prev,
+                                [index]: event.target.value,
+                              }))
+                            }
+                            placeholder="Type expected student answer..."
+                            className="mt-4 min-h-28 w-full rounded-md border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                          />
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => toggleAnswer(index)}
+                          className="mt-5 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                        >
+                          {resolvedType === "shortanswer"
+                            ? openAnswers[index]
+                              ? "Hide Model Answer"
+                              : "Show Model Answer"
+                            : openAnswers[index]
+                              ? "Hide Answer"
+                              : "Show Answer"}
+                        </button>
+
+                        {openAnswers[index] && (
+                          <p className="mt-3 rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                            <span className="font-semibold">
+                              {resolvedType === "shortanswer"
+                                ? "Model Answer:"
+                                : "Correct Answer:"}
+                            </span>{" "}
+                            {item.answer}
+                          </p>
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -732,9 +926,39 @@ export default function GeneratePage() {
           </aside>
         </div>
       </div>
+
+        {isLocalhost && (
+          <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 pb-6 sm:px-6">
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.removeItem("quizai_daily_count");
+                localStorage.removeItem("quizai_last_date");
+                window.location.reload();
+              }}
+              className="text-xs text-slate-400 transition hover:text-slate-600"
+            >
+              [dev: reset limits]
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (isPro) {
+                  localStorage.removeItem("quizai_pro");
+                } else {
+                  localStorage.setItem("quizai_pro", "true");
+                }
+                window.location.reload();
+              }}
+              className="text-xs text-slate-400 transition hover:text-slate-600"
+            >
+              {isPro ? "[dev: deactivate pro]" : "[dev: activate pro]"}
+            </button>
+          </div>
+        )}
       </main>
 
-      {showUpgradeModal && (
+      {isFreeUser && showUpgradeModal && (
         <div
           style={{
             position: "absolute",
