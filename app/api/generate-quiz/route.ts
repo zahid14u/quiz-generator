@@ -12,6 +12,26 @@ function stripCodeFences(text: string): string {
   return text.replace(/```json\s*|```/gi, "").trim();
 }
 
+function extractJsonArrayString(text: string): string | null {
+  const match = text.match(/\[[\s\S]*\]/);
+  return match ? match[0].trim() : null;
+}
+
+function parseQuestionObjectsFromText(text: string): unknown[] {
+  const objectMatches = text.match(/\{[\s\S]*?\}(?=\s*,|\s*\])/g) ?? [];
+  const parsedObjects: unknown[] = [];
+
+  for (const objectText of objectMatches) {
+    try {
+      parsedObjects.push(JSON.parse(objectText));
+    } catch {
+      // Skip malformed objects and keep successful ones.
+    }
+  }
+
+  return parsedObjects;
+}
+
 export async function POST(request: Request) {
   try {
     if (!process.env.GROQ_API_KEY) {
@@ -36,7 +56,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const userPrompt = `Generate ${numQuestions} multiple choice questions about '${topic}' at ${difficulty} difficulty. Return ONLY a JSON array in this exact format: [{question: string, options: [string,string,string,string], answer: string}]`;
+    if (numQuestions > 30) {
+      return NextResponse.json(
+        {
+          error: "numQuestions must be 30 or less.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const userPrompt = `Generate ${numQuestions} multiple choice questions about '${topic}' at ${difficulty} difficulty. Return ONLY a JSON array in this exact format: [{question: string, options: [string,string,string,string], answer: string}]. Do not add any explanation, intro, or closing text. Return the JSON array starting with [ and ending with ]. Do not truncate or cut off the array — complete all questions.`;
 
     const groqResponse = await fetch(GROQ_URL, {
       method: "POST",
@@ -58,7 +87,7 @@ export async function POST(request: Request) {
           },
         ],
         temperature: 0.7,
-        max_tokens: 2000,
+        max_tokens: 4000,
       }),
     });
 
@@ -86,11 +115,18 @@ export async function POST(request: Request) {
     }
 
     const cleanedText = stripCodeFences(generatedText);
+    const extractedJsonArray = extractJsonArrayString(cleanedText);
+    const textToParse = extractedJsonArray ?? cleanedText;
 
     let parsedQuiz: unknown;
     try {
-      parsedQuiz = JSON.parse(cleanedText);
+      parsedQuiz = JSON.parse(textToParse);
     } catch {
+      const fallbackQuestions = parseQuestionObjectsFromText(textToParse);
+      if (fallbackQuestions.length > 0) {
+        return NextResponse.json(fallbackQuestions);
+      }
+
       return NextResponse.json(
         {
           error:

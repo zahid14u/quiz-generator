@@ -44,6 +44,7 @@ const mockQuiz: QuizQuestion[] = [
 
 const optionLabels = ["A", "B", "C", "D"];
 const QUIZ_HISTORY_KEY = "quizai-recent-quizzes";
+const MAX_QUESTION_COUNT = 30;
 const loadingMessages = [
   "Reading your topic...",
   "Thinking of good questions...",
@@ -106,6 +107,15 @@ export default function GeneratePage() {
     setErrorMessage("");
 
     try {
+      const safeQuestionCount = Math.min(
+        Number(questionCount),
+        MAX_QUESTION_COUNT,
+      );
+
+      if (String(safeQuestionCount) !== questionCount) {
+        setQuestionCount(String(safeQuestionCount));
+      }
+
       const response = await fetch("/api/generate-quiz", {
         method: "POST",
         headers: {
@@ -113,7 +123,7 @@ export default function GeneratePage() {
         },
         body: JSON.stringify({
           topic,
-          numQuestions: Number(questionCount),
+          numQuestions: safeQuestionCount,
           difficulty,
         }),
       });
@@ -149,7 +159,7 @@ export default function GeneratePage() {
         id: crypto.randomUUID(),
         topic: topic || "Untitled",
         difficulty,
-        numQuestions: Number(questionCount),
+        numQuestions: safeQuestionCount,
         questions: quizToShow,
         createdAt: new Date().toISOString(),
       };
@@ -285,7 +295,7 @@ export default function GeneratePage() {
   const handleLoadHistoryQuiz = (item: QuizHistoryItem) => {
     setTopic(item.topic);
     setDifficulty(item.difficulty);
-    setQuestionCount(String(item.numQuestions));
+    setQuestionCount(String(Math.min(item.numQuestions, MAX_QUESTION_COUNT)));
     setQuizResults(item.questions);
     setOpenAnswers({});
     setErrorMessage("");
@@ -380,8 +390,6 @@ export default function GeneratePage() {
                       <option value="15">15</option>
                       <option value="20">20</option>
                       <option value="30">30</option>
-                      <option value="40">40</option>
-                      <option value="50">50</option>
                     </select>
                   </div>
 
