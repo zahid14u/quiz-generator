@@ -205,20 +205,22 @@ export default function GeneratePage() {
 
       const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data?.error || "Failed to generate quiz.");
-      }
+if (data.error) {
+  throw new Error(data.error);
+}
 
-      if (!Array.isArray(data)) {
-        throw new Error("Invalid quiz data format returned by server.");
-      }
+const questionsArray = Array.isArray(data) ? data : data.questions;
+
+if (!questionsArray || !Array.isArray(questionsArray)) {
+  throw new Error('Invalid quiz data format returned by server.');
+}
 
       const fallbackType: NonNullable<QuizQuestion["type"]> =
         questionType === "mixed"
           ? "mcq"
           : normalizeQuestionType(questionType, "mcq");
 
-      const validatedQuiz = data
+      const validatedQuiz = questionsArray
         .filter(
           (item: unknown): item is Record<string, unknown> =>
             typeof item === "object" && item !== null,
