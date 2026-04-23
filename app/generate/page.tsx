@@ -45,6 +45,10 @@ const mockQuiz: QuizQuestion[] = [
 const optionLabels = ["A", "B", "C", "D"];
 const QUIZ_HISTORY_KEY = "quizai-recent-quizzes";
 const MAX_QUESTION_COUNT = 30;
+const FREE_QUIZ_DAILY_LIMIT = 3;
+const FREE_QUESTION_LIMIT = 10;
+const DAILY_COUNT_KEY = "quizai_daily_count";
+const LAST_DATE_KEY = "quizai_last_date";
 const loadingMessages = [
   "Reading your topic...",
   "Thinking of good questions...",
@@ -56,6 +60,7 @@ const loadingMessages = [
 export default function GeneratePage() {
   const [topic, setTopic] = useState("");
   const [questionCount, setQuestionCount] = useState("10");
+  const [questionType, setQuestionType] = useState("MCQ");
   const [difficulty, setDifficulty] = useState("Medium");
   const [isGenerating, setIsGenerating] = useState(false);
   const [quizResults, setQuizResults] = useState<QuizQuestion[]>([]);
@@ -65,6 +70,14 @@ export default function GeneratePage() {
   const [isCopied, setIsCopied] = useState(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [quizHistory, setQuizHistory] = useState<QuizHistoryItem[]>([]);
+  const [dailyQuizCount, setDailyQuizCount] = useState(0);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showPostGenerateNudge, setShowPostGenerateNudge] = useState(true);
+
+  const isFreeUser = true;
+  const hasReachedDailyLimit = isFreeUser && dailyQuizCount >= FREE_QUIZ_DAILY_LIMIT;
+
+  const getTodayDate = () => new Date().toISOString().split("T")[0];
 
   const saveQuizHistory = (history: QuizHistoryItem[]) => {
     try {
@@ -89,6 +102,24 @@ export default function GeneratePage() {
 
   useEffect(() => {
     try {
+      const today = getTodayDate();
+      const storedDate = localStorage.getItem(LAST_DATE_KEY);
+      const storedCount = Number(localStorage.getItem(DAILY_COUNT_KEY) || "0");
+
+      if (storedDate !== today) {
+        localStorage.setItem(LAST_DATE_KEY, today);
+        localStorage.setItem(DAILY_COUNT_KEY, "0");
+        setDailyQuizCount(0);
+      } else {
+        setDailyQuizCount(Number.isFinite(storedCount) ? storedCount : 0);
+      }
+    } catch {
+      setDailyQuizCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
       const stored = localStorage.getItem(QUIZ_HISTORY_KEY);
       if (!stored) return;
       const parsed = JSON.parse(stored) as QuizHistoryItem[];
@@ -102,6 +133,12 @@ export default function GeneratePage() {
 
   const handleGenerateQuiz = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (isFreeUser && hasReachedDailyLimit) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
     setIsGenerating(true);
     setOpenAnswers({});
     setErrorMessage("");
@@ -149,6 +186,7 @@ export default function GeneratePage() {
 
       const quizToShow = validatedQuiz.length > 0 ? validatedQuiz : mockQuiz;
       setQuizResults(quizToShow);
+      setShowPostGenerateNudge(true);
       if (validatedQuiz.length === 0) {
         setErrorMessage(
           "AI returned an unexpected format, so fallback mock questions are shown.",
@@ -169,6 +207,17 @@ export default function GeneratePage() {
         saveQuizHistory(updatedHistory);
         return updatedHistory;
       });
+
+      if (isFreeUser) {
+        const updatedCount = dailyQuizCount + 1;
+        setDailyQuizCount(updatedCount);
+        try {
+          localStorage.setItem(DAILY_COUNT_KEY, String(updatedCount));
+          localStorage.setItem(LAST_DATE_KEY, getTodayDate());
+        } catch {
+          // If storage is unavailable, keep in-memory count.
+        }
+      }
     } catch (error) {
       setQuizResults(mockQuiz);
       setErrorMessage(
@@ -318,23 +367,76 @@ export default function GeneratePage() {
     }
   };
 
-  return (
-    <main className="min-h-screen bg-white text-slate-900">
-      <nav className="w-full bg-slate-900 text-white">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <Link href="/" className="whitespace-nowrap text-lg font-bold tracking-tight sm:text-xl">
-            QuizAI
-          </Link>
-          <Link
-            href="/"
-            className="whitespace-nowrap rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
-          >
-            Home
-          </Link>
-        </div>
-      </nav>
+  const handleQuestionCountChange = (value: string) => {
+    if (isFreeUser && Number(value) > FREE_QUESTION_LIMIT) {
+      setQuestionCount(String(FREE_QUESTION_LIMIT));
+      setShowUpgradeModal(true);
+      return;
+    }
 
-      <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 md:py-16">
+    setQuestionCount(value);
+  };
+
+  const handleQuestionTypeChange = (value: string) => {
+    if (
+      isFreeUser &&
+      value !== "MCQ"
+    ) {
+      setQuestionType("MCQ");
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    setQuestionType(value);
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", position: "relative" }}>
+      <main className="min-h-screen bg-white text-slate-900">
+        <nav className="w-full bg-slate-900 text-white">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
+            <Link href="/" className="whitespace-nowrap text-lg font-bold tracking-tight sm:text-xl">
+              QuizAI
+            </Link>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link
+                href="/pricing"
+                className="whitespace-nowrap rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
+              >
+                Pricing
+              </Link>
+              <Link
+                href="/"
+                className="whitespace-nowrap rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
+              >
+                Home
+              </Link>
+            </div>
+          </div>
+        </nav>
+
+        {isFreeUser && (
+          <div
+            className={
+              hasReachedDailyLimit
+                ? "bg-orange-500 px-4 py-2 text-xs text-white sm:text-sm"
+                : "bg-violet-600 px-4 py-2 text-xs text-white sm:text-sm"
+            }
+          >
+            <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 sm:px-2">
+              <span>
+                {hasReachedDailyLimit
+                  ? "Daily limit reached · Resets tomorrow · Upgrade to Pro →"
+                  : `Free plan · ${dailyQuizCount}/${FREE_QUIZ_DAILY_LIMIT} quizzes used today · Upgrade to Pro for unlimited →`}
+              </span>
+              <Link href="/pricing" className="font-semibold underline underline-offset-2">
+                Upgrade to Pro
+              </Link>
+            </div>
+          </div>
+        )}
+
+        <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 md:py-16">
         <header>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">
             Quiz Generator
@@ -382,14 +484,17 @@ export default function GeneratePage() {
                       id="question-count"
                       name="question-count"
                       value={questionCount}
-                      onChange={(event) => setQuestionCount(event.target.value)}
+                      onChange={(event) =>
+                        handleQuestionCountChange(event.target.value)
+                      }
                       className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
                     >
                       <option value="5">5</option>
                       <option value="10">10</option>
-                      <option value="15">15</option>
-                      <option value="20">20</option>
-                      <option value="30">30</option>
+                      <option value="15">15 (Pro)</option>
+                      <option value="20">20 (Pro)</option>
+                      <option value="25">25 (Pro)</option>
+                      <option value="30">30 (Pro)</option>
                     </select>
                   </div>
 
@@ -414,18 +519,67 @@ export default function GeneratePage() {
                   </div>
                 </div>
 
+                <div>
+                  <label
+                    htmlFor="question-type"
+                    className="mb-2 block text-sm font-medium text-slate-700"
+                  >
+                    Question type
+                  </label>
+                  <select
+                    id="question-type"
+                    name="question-type"
+                    value={questionType}
+                    onChange={(event) =>
+                      handleQuestionTypeChange(event.target.value)
+                    }
+                    className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  >
+                    <option value="MCQ">MCQ</option>
+                    <option value="True/False">True/False (Pro)</option>
+                    <option value="Fill in the Blanks">Fill in the Blanks (Pro)</option>
+                    <option value="Short Answer">Short Answer (Pro)</option>
+                    <option value="Mixed">Mixed question types (Pro)</option>
+                  </select>
+                </div>
+
                 <button
                   type="submit"
-                  disabled={isGenerating}
-                  className="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-8 py-4 text-lg font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-500"
+                  disabled={isGenerating || hasReachedDailyLimit}
+                  className="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-8 py-4 text-lg font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
-                  {isGenerating ? "Generating..." : "Generate Quiz"}
+                  {isGenerating
+                    ? "Generating..."
+                    : hasReachedDailyLimit
+                      ? "Daily Limit Reached"
+                      : "Generate Quiz"}
                 </button>
+                {hasReachedDailyLimit && (
+                  <p className="text-center text-sm text-slate-600">
+                    Upgrade to Pro for unlimited quizzes
+                  </p>
+                )}
               </form>
             </section>
 
             <section className="mt-10 pb-8">
               <h2 className="text-xl font-semibold sm:text-2xl">Generated Questions</h2>
+
+              {isFreeUser && quizResults.length > 0 && showPostGenerateNudge && (
+                <div className="mt-4 flex items-center justify-between gap-3 rounded-md bg-violet-50 px-4 py-3 text-sm text-violet-900">
+                  <Link href="/pricing" className="font-medium hover:underline">
+                    Want True/False & Fill in the Blanks? Upgrade to Pro →
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setShowPostGenerateNudge(false)}
+                    className="rounded px-2 py-1 text-violet-700 transition hover:bg-violet-100"
+                    aria-label="Dismiss upgrade nudge"
+                  >
+                    X
+                  </button>
+                </div>
+              )}
 
           {isGenerating && (
             <div className="mt-6 rounded-lg border border-slate-200 p-8">
@@ -578,6 +732,56 @@ export default function GeneratePage() {
           </aside>
         </div>
       </div>
-    </main>
+      </main>
+
+      {showUpgradeModal && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "flex-start",
+            paddingTop: "15vh",
+            justifyContent: "center",
+            zIndex: 50,
+          }}
+        >
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <button
+              type="button"
+              onClick={() => setShowUpgradeModal(false)}
+              className="absolute right-3 top-3 rounded px-2 py-1 text-slate-500 transition hover:bg-slate-100"
+              aria-label="Close modal"
+            >
+              X
+            </button>
+
+            <h3 className="text-xl font-bold text-purple-700">Unlock Pro Features</h3>
+
+            <ul className="mt-5 space-y-3 text-sm text-slate-700">
+              <li>✓ All question types (True/False, Fill in Blanks, Short Answer)</li>
+              <li>✓ Up to 30 questions per quiz</li>
+              <li>✓ Unlimited quizzes every day</li>
+            </ul>
+
+            <Link
+              href="/pricing"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
+            >
+              Upgrade for $5/mo →
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => setShowUpgradeModal(false)}
+              className="mt-3 w-full text-center text-sm text-slate-500 transition hover:text-slate-700"
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

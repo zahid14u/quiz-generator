@@ -26,12 +26,20 @@ export default function HomePage() {
           <span className="whitespace-nowrap text-lg font-bold tracking-tight sm:text-xl">
             QuizAI
           </span>
-          <Link
-            href="/generate"
-            className="whitespace-nowrap rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 sm:px-4"
-          >
-            Get Started
-          </Link>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              href="/pricing"
+              className="whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 sm:px-4"
+            >
+              Pricing
+            </Link>
+            <Link
+              href="/generate"
+              className="whitespace-nowrap rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 sm:px-4"
+            >
+              Get Started
+            </Link>
+          </div>
         </nav>
 
         <section className="py-16 text-center md:py-28">
