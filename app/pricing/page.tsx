@@ -10,6 +10,9 @@ export default function PricingPage() {
           <div className="flex items-center gap-2 sm:gap-3">
             <Link href="/generate" className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4">Generate</Link>
             <Link href="/" className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4">Home</Link>
+            <Link href="/contact" className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4">
+  Support
+</Link>
           </div>
         </div>
       </nav>
