@@ -102,6 +102,8 @@ export default function GeneratePage() {
   const [showPostGenerateNudge, setShowPostGenerateNudge] = useState(true);
   const [isLocalhost, setIsLocalhost] = useState(false);
   const [isPro, setIsPro] = useState(false);
+const [isDemoActive, setIsDemoActive] = useState(false);
+const [demoQuizUsed, setDemoQuizUsed] = useState(false);
 
   const isFreeUser = !isPro;
   const hasReachedDailyLimit = isFreeUser && dailyQuizCount >= FREE_QUIZ_DAILY_LIMIT;
@@ -134,6 +136,9 @@ export default function GeneratePage() {
     setIsLocalhost(localhost);
     if (localhost && localStorage.getItem("quizai_pro") === "true") {
       setIsPro(true);
+    }
+    if (localStorage.getItem("quizai_demo_used") === "true") {
+      setDemoQuizUsed(true);
     }
   }, []);
 
@@ -247,6 +252,13 @@ if (!questionsArray || !Array.isArray(questionsArray)) {
 
       const quizToShow = validatedQuiz.length > 0 ? validatedQuiz : mockQuiz;
       setQuizResults(quizToShow);
+if (isDemoActive) {
+  setIsPro(false);
+  setIsDemoActive(false);
+  setErrorMessage(
+    "🎉 Demo complete! You just experienced Pro features. Upgrade for $5/mo to keep access."
+  );
+}
       setShortAnswerDrafts({});
       if (isFreeUser) {
         setShowPostGenerateNudge(true);
@@ -534,12 +546,21 @@ if (!questionsArray || !Array.isArray(questionsArray)) {
           </div>
         )}
         {isPro && (
-          <div className="bg-green-600 px-4 py-2 text-xs text-white sm:text-sm">
-            <div className="mx-auto w-full max-w-6xl sm:px-2">
-              Pro plan active (test mode)
-            </div>
-          </div>
-        )}
+  <div className="bg-green-600 px-4 py-2 text-xs text-white sm:text-sm">
+    <div className="mx-auto flex w-full max-w-6xl items-center justify-between sm:px-2">
+      <span>
+        {isDemoActive
+          ? "🎁 Pro Demo Active — enjoy 1 free Pro quiz!"
+          : "Pro plan active (test mode)"}
+      </span>
+      {isDemoActive && (
+        <Link href="/pricing" className="font-bold underline">
+          Upgrade $5/mo →
+        </Link>
+      )}
+    </div>
+  </div>
+)}
 
         <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 md:py-16">
         <header>
@@ -932,16 +953,17 @@ if (!questionsArray || !Array.isArray(questionsArray)) {
         {isLocalhost && (
           <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 pb-6 sm:px-6">
             <button
-              type="button"
-              onClick={() => {
-                localStorage.removeItem("quizai_daily_count");
-                localStorage.removeItem("quizai_last_date");
-                window.location.reload();
-              }}
-              className="text-xs text-slate-400 transition hover:text-slate-600"
-            >
-              [dev: reset limits]
-            </button>
+  type="button"
+  onClick={() => {
+    localStorage.removeItem("quizai_daily_count");
+    localStorage.removeItem("quizai_last_date");
+    localStorage.removeItem("quizai_demo_used");
+    window.location.reload();
+  }}
+  className="text-xs text-slate-400 transition hover:text-slate-600"
+>
+  [dev: reset limits]
+</button>
             <button
               type="button"
               onClick={() => {
@@ -991,12 +1013,46 @@ if (!questionsArray || !Array.isArray(questionsArray)) {
               <li>✓ Unlimited quizzes every day</li>
             </ul>
 
-            <Link
-              href="/pricing"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
-            >
-              Upgrade for $5/mo →
-            </Link>
+            <div className="mt-6 space-y-3">
+  {!demoQuizUsed ? (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setIsDemoActive(true);
+          setIsPro(true);
+          setDemoQuizUsed(true);
+          setShowUpgradeModal(false);
+          try {
+            localStorage.setItem("quizai_demo_used", "true");
+          } catch {}
+        }}
+        className="inline-flex w-full items-center justify-center rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700"
+      >
+        🎁 Try Pro Free — 1 Demo Quiz
+      </button>
+      <p className="text-center text-xs text-slate-500">
+        No payment needed · 1 free Pro quiz
+      </p>
+    </>
+  ) : (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+      <p className="text-sm font-medium text-amber-800">
+        You have already used your free demo.
+      </p>
+      <p className="mt-1 text-xs text-amber-600">
+        Upgrade to Pro to keep all features.
+      </p>
+    </div>
+  )}
+
+  <Link
+    href="/pricing"
+    className="inline-flex w-full items-center justify-center rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
+  >
+    Upgrade for $5/mo →
+  </Link>
+</div>
 
             <button
               type="button"
