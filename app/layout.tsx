@@ -28,22 +28,38 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body>
-  {children}
-  <footer className="mt-16 border-t border-slate-200 bg-slate-50">
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-        <p className="text-sm font-bold">QuizAI — by Modern AI Softech</p>
-        <div className="flex gap-6 text-sm text-slate-600">
-          <a href="/" className="hover:text-slate-900">Home</a>
-          <a href="/pricing" className="hover:text-slate-900">Pricing</a>
-          <a href="/generate" className="hover:text-slate-900">Generate</a>
-          <a href="/contact" className="hover:text-slate-900">Contact</a>
-        </div>
-        <p className="text-xs text-slate-500">© 2025 Modern AI Softech. All rights reserved.</p>
-      </div>
-    </div>
-  </footer>
-</body>
+        {children}
+        <footer className="mt-16 border-t border-slate-200 bg-slate-50">
+          <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+            <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+              <p className="text-sm font-bold">QuizAI — by Modern AI Softech</p>
+              <div className="flex gap-6 text-sm text-slate-600">
+                <a href="/" className="hover:text-slate-900">
+                  Home
+                </a>
+                <a href="/pricing" className="hover:text-slate-900">
+                  Pricing
+                </a>
+                <a href="/generate" className="hover:text-slate-900">
+                  Generate
+                </a>
+                <a href="/contact" className="hover:text-slate-900">
+                  Contact
+                </a>
+                <a href="/terms" className="hover:text-slate-900">
+                  Terms
+                </a>
+                <a href="/privacy" className="hover:text-slate-900">
+                  Privacy
+                </a>
+              </div>
+              <p className="text-xs text-slate-500">
+                © 2025 Modern AI Softech. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </footer>
+      </body>
     </html>
   );
 }
