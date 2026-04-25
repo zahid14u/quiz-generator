@@ -102,11 +102,12 @@ export default function GeneratePage() {
   const [showPostGenerateNudge, setShowPostGenerateNudge] = useState(true);
   const [isLocalhost, setIsLocalhost] = useState(false);
   const [isPro, setIsPro] = useState(false);
-const [isDemoActive, setIsDemoActive] = useState(false);
-const [demoQuizUsed, setDemoQuizUsed] = useState(false);
+  const [isDemoActive, setIsDemoActive] = useState(false);
+  const [demoQuizUsed, setDemoQuizUsed] = useState(false);
 
   const isFreeUser = !isPro;
-  const hasReachedDailyLimit = isFreeUser && dailyQuizCount >= FREE_QUIZ_DAILY_LIMIT;
+  const hasReachedDailyLimit =
+    isFreeUser && dailyQuizCount >= FREE_QUIZ_DAILY_LIMIT;
 
   const getTodayDate = () => new Date().toISOString().split("T")[0];
 
@@ -173,6 +174,16 @@ const [demoQuizUsed, setDemoQuizUsed] = useState(false);
     }
   }, []);
 
+  async function getToken(): Promise<string> {
+    try {
+      const res = await fetch("/api/auth/token");
+      const data = await res.json();
+      return data.token || "";
+    } catch {
+      return "";
+    }
+  }
+
   const handleGenerateQuiz = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -195,10 +206,13 @@ const [demoQuizUsed, setDemoQuizUsed] = useState(false);
         setQuestionCount(String(safeQuestionCount));
       }
 
+      const token = await getToken();
+
       const response = await fetch("/api/generate-quiz", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           topic,
@@ -210,15 +224,15 @@ const [demoQuizUsed, setDemoQuizUsed] = useState(false);
 
       const data = await response.json();
 
-if (data.error) {
-  throw new Error(data.error);
-}
+      if (data.error) {
+        throw new Error(data.error);
+      }
 
-const questionsArray = Array.isArray(data) ? data : data.questions;
+      const questionsArray = Array.isArray(data) ? data : data.questions;
 
-if (!questionsArray || !Array.isArray(questionsArray)) {
-  throw new Error('Invalid quiz data format returned by server.');
-}
+      if (!questionsArray || !Array.isArray(questionsArray)) {
+        throw new Error("Invalid quiz data format returned by server.");
+      }
 
       const fallbackType: NonNullable<QuizQuestion["type"]> =
         questionType === "mixed"
@@ -233,7 +247,9 @@ if (!questionsArray || !Array.isArray(questionsArray)) {
         .map((item) => {
           const type = normalizeQuestionType(item.type, fallbackType);
           const options = Array.isArray(item.options)
-            ? item.options.filter((option): option is string => typeof option === "string")
+            ? item.options.filter(
+                (option): option is string => typeof option === "string",
+              )
             : [];
 
           return {
@@ -252,13 +268,13 @@ if (!questionsArray || !Array.isArray(questionsArray)) {
 
       const quizToShow = validatedQuiz.length > 0 ? validatedQuiz : mockQuiz;
       setQuizResults(quizToShow);
-if (isDemoActive) {
-  setIsPro(false);
-  setIsDemoActive(false);
-  setErrorMessage(
-    "🎉 Demo complete! You just experienced Pro features. Upgrade for $5/mo to keep access."
-  );
-}
+      if (isDemoActive) {
+        setIsPro(false);
+        setIsDemoActive(false);
+        setErrorMessage(
+          "🎉 Demo complete! You just experienced Pro features. Upgrade for $5/mo to keep access.",
+        );
+      }
       setShortAnswerDrafts({});
       if (isFreeUser) {
         setShowPostGenerateNudge(true);
@@ -357,7 +373,13 @@ if (isDemoActive) {
       writeLines(questionLines, 12);
 
       if (resolvedType === "shortanswer") {
-        writeLines(["  ________________________________", "  ________________________________"], 11);
+        writeLines(
+          [
+            "  ________________________________",
+            "  ________________________________",
+          ],
+          11,
+        );
       } else if (resolvedType === "truefalse") {
         writeLines(["  True", "  False"], 11);
       } else {
@@ -366,7 +388,10 @@ if (isDemoActive) {
             `${optionLabels[optionIndex]}. ${option}`,
             maxWidth - 8,
           ) as string[];
-          writeLines(optionLines.map((line) => `  ${line}`), 11);
+          writeLines(
+            optionLines.map((line) => `  ${line}`),
+            11,
+          );
         });
       }
 
@@ -389,7 +414,9 @@ if (isDemoActive) {
       writeLines(answerLines, 12);
     });
 
-    doc.save(`quizai-${(topic || "quiz").toLowerCase().replace(/\s+/g, "-")}.pdf`);
+    doc.save(
+      `quizai-${(topic || "quiz").toLowerCase().replace(/\s+/g, "-")}.pdf`,
+    );
     setDownloadMessage("PDF downloaded successfully.");
     setTimeout(() => {
       setDownloadMessage("");
@@ -505,7 +532,10 @@ if (isDemoActive) {
       <main className="min-h-screen bg-white text-slate-900">
         <nav className="w-full bg-slate-900 text-white">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
-            <Link href="/" className="whitespace-nowrap text-lg font-bold tracking-tight sm:text-xl">
+            <Link
+              href="/"
+              className="whitespace-nowrap text-lg font-bold tracking-tight sm:text-xl"
+            >
               QuizAI
             </Link>
             <div className="flex items-center gap-2 sm:gap-3">
@@ -521,10 +551,12 @@ if (isDemoActive) {
               >
                 Home
               </Link>
-              <Link 
-                href="/contact" className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4">
-  Support
-</Link>
+              <Link
+                href="/contact"
+                className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
+              >
+                Support
+              </Link>
             </div>
           </div>
         </nav>
@@ -543,431 +575,460 @@ if (isDemoActive) {
                   ? "Daily limit reached · Resets tomorrow · Upgrade to Pro →"
                   : `Free plan · ${dailyQuizCount}/${FREE_QUIZ_DAILY_LIMIT} quizzes used today · Upgrade to Pro for unlimited →`}
               </span>
-              <Link href="/pricing" className="font-semibold underline underline-offset-2">
+              <Link
+                href="/pricing"
+                className="font-semibold underline underline-offset-2"
+              >
                 Upgrade to Pro
               </Link>
             </div>
           </div>
         )}
         {isPro && (
-  <div className="bg-green-600 px-4 py-2 text-xs text-white sm:text-sm">
-    <div className="mx-auto flex w-full max-w-6xl items-center justify-between sm:px-2">
-      <span>
-        {isDemoActive
-          ? "🎁 Pro Demo Active — enjoy 1 free Pro quiz!"
-          : "Pro plan active (test mode)"}
-      </span>
-      {isDemoActive && (
-        <Link href="/pricing" className="font-bold underline">
-          Upgrade $5/mo →
-        </Link>
-      )}
-    </div>
-  </div>
-)}
+          <div className="bg-green-600 px-4 py-2 text-xs text-white sm:text-sm">
+            <div className="mx-auto flex w-full max-w-6xl items-center justify-between sm:px-2">
+              <span>
+                {isDemoActive
+                  ? "🎁 Pro Demo Active — enjoy 1 free Pro quiz!"
+                  : "Pro plan active (test mode)"}
+              </span>
+              {isDemoActive && (
+                <Link href="/pricing" className="font-bold underline">
+                  Upgrade $5/mo →
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 md:py-16">
-        <header>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">
-            Quiz Generator
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
-            Create multiple-choice quizzes for your class in seconds with
-            AI-ready inputs.
-          </p>
-        </header>
+          <header>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">
+              Quiz Generator
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
+              Create multiple-choice quizzes for your class in seconds with
+              AI-ready inputs.
+            </p>
+          </header>
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div>
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 md:p-8">
-              <h2 className="text-xl font-semibold">Generate a New Quiz</h2>
+          <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div>
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 md:p-8">
+                <h2 className="text-xl font-semibold">Generate a New Quiz</h2>
 
-              <form onSubmit={handleGenerateQuiz} className="mt-6 space-y-5">
-                <div>
-                  <label
-                    htmlFor="topic"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Enter a topic
-                  </label>
-                  <input
-                    id="topic"
-                    name="topic"
-                    type="text"
-                    value={topic}
-                    onChange={(event) => setTopic(event.target.value)}
-                    placeholder="Computer Networking Basics"
-                    className="w-full rounded-md border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                    required
-                  />
-                </div>
-
-                <div className="grid gap-5 md:grid-cols-2">
+                <form onSubmit={handleGenerateQuiz} className="mt-6 space-y-5">
                   <div>
                     <label
-                      htmlFor="question-count"
+                      htmlFor="topic"
                       className="mb-2 block text-sm font-medium text-slate-700"
                     >
-                      Number of questions
+                      Enter a topic
+                    </label>
+                    <input
+                      id="topic"
+                      name="topic"
+                      type="text"
+                      value={topic}
+                      onChange={(event) => setTopic(event.target.value)}
+                      placeholder="Computer Networking Basics"
+                      className="w-full rounded-md border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="question-count"
+                        className="mb-2 block text-sm font-medium text-slate-700"
+                      >
+                        Number of questions
+                      </label>
+                      <select
+                        id="question-count"
+                        name="question-count"
+                        value={questionCount}
+                        onChange={(event) =>
+                          handleQuestionCountChange(event.target.value)
+                        }
+                        className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                      >
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                        <option value="15">
+                          {isFreeUser ? "15 (Pro)" : "15"}
+                        </option>
+                        <option value="20">
+                          {isFreeUser ? "20 (Pro)" : "20"}
+                        </option>
+                        <option value="25">
+                          {isFreeUser ? "25 (Pro)" : "25"}
+                        </option>
+                        <option value="30">
+                          {isFreeUser ? "30 (Pro)" : "30"}
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="difficulty"
+                        className="mb-2 block text-sm font-medium text-slate-700"
+                      >
+                        Difficulty
+                      </label>
+                      <select
+                        id="difficulty"
+                        name="difficulty"
+                        value={difficulty}
+                        onChange={(event) => setDifficulty(event.target.value)}
+                        className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                      >
+                        <option value="Easy">Easy</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Hard">Hard</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="question-type"
+                      className="mb-2 block text-sm font-medium text-slate-700"
+                    >
+                      Question type
                     </label>
                     <select
-                      id="question-count"
-                      name="question-count"
-                      value={questionCount}
+                      id="question-type"
+                      name="question-type"
+                      value={questionType}
                       onChange={(event) =>
-                        handleQuestionCountChange(event.target.value)
+                        handleQuestionTypeChange(event.target.value)
                       }
                       className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
                     >
-                      <option value="5">5</option>
-                      <option value="10">10</option>
-                      <option value="15">{isFreeUser ? "15 (Pro)" : "15"}</option>
-                      <option value="20">{isFreeUser ? "20 (Pro)" : "20"}</option>
-                      <option value="25">{isFreeUser ? "25 (Pro)" : "25"}</option>
-                      <option value="30">{isFreeUser ? "30 (Pro)" : "30"}</option>
+                      <option value="mcq">MCQ</option>
+                      <option value="truefalse">
+                        {isFreeUser ? "True/False (Pro)" : "True/False"}
+                      </option>
+                      <option value="fillinblanks">
+                        {isFreeUser
+                          ? "Fill in the Blanks (Pro)"
+                          : "Fill in the Blanks"}
+                      </option>
+                      <option value="shortanswer">
+                        {isFreeUser ? "Short Answer (Pro)" : "Short Answer"}
+                      </option>
+                      <option value="mixed">
+                        {isFreeUser
+                          ? "Mixed question types (Pro)"
+                          : "Mixed question types"}
+                      </option>
                     </select>
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="difficulty"
-                      className="mb-2 block text-sm font-medium text-slate-700"
-                    >
-                      Difficulty
-                    </label>
-                    <select
-                      id="difficulty"
-                      name="difficulty"
-                      value={difficulty}
-                      onChange={(event) => setDifficulty(event.target.value)}
-                      className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                    >
-                      <option value="Easy">Easy</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Hard">Hard</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="question-type"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Question type
-                  </label>
-                  <select
-                    id="question-type"
-                    name="question-type"
-                    value={questionType}
-                    onChange={(event) =>
-                      handleQuestionTypeChange(event.target.value)
-                    }
-                    className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  >
-                    <option value="mcq">MCQ</option>
-                    <option value="truefalse">
-                      {isFreeUser ? "True/False (Pro)" : "True/False"}
-                    </option>
-                    <option value="fillinblanks">
-                      {isFreeUser
-                        ? "Fill in the Blanks (Pro)"
-                        : "Fill in the Blanks"}
-                    </option>
-                    <option value="shortanswer">
-                      {isFreeUser ? "Short Answer (Pro)" : "Short Answer"}
-                    </option>
-                    <option value="mixed">
-                      {isFreeUser
-                        ? "Mixed question types (Pro)"
-                        : "Mixed question types"}
-                    </option>
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isGenerating || (isFreeUser && hasReachedDailyLimit)}
-                  className="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-8 py-4 text-lg font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                >
-                  {isGenerating
-                    ? "Generating..."
-                    : isFreeUser && hasReachedDailyLimit
-                      ? "Daily Limit Reached"
-                      : "Generate Quiz"}
-                </button>
-                {isFreeUser && hasReachedDailyLimit && (
-                  <p className="text-center text-sm text-slate-600">
-                    Upgrade to Pro for unlimited quizzes
-                  </p>
-                )}
-              </form>
-            </section>
-
-            <section className="mt-10 pb-8">
-              <h2 className="text-xl font-semibold sm:text-2xl">Generated Questions</h2>
-
-              {isFreeUser && quizResults.length > 0 && showPostGenerateNudge && (
-                <div className="mt-4 flex items-center justify-between gap-3 rounded-md bg-violet-50 px-4 py-3 text-sm text-violet-900">
-                  <Link href="/pricing" className="font-medium hover:underline">
-                    Want True/False & Fill in the Blanks? Upgrade to Pro →
-                  </Link>
                   <button
-                    type="button"
-                    onClick={() => setShowPostGenerateNudge(false)}
-                    className="rounded px-2 py-1 text-violet-700 transition hover:bg-violet-100"
-                    aria-label="Dismiss upgrade nudge"
+                    type="submit"
+                    disabled={
+                      isGenerating || (isFreeUser && hasReachedDailyLimit)
+                    }
+                    className="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-8 py-4 text-lg font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
-                    X
+                    {isGenerating
+                      ? "Generating..."
+                      : isFreeUser && hasReachedDailyLimit
+                        ? "Daily Limit Reached"
+                        : "Generate Quiz"}
                   </button>
-                </div>
-              )}
+                  {isFreeUser && hasReachedDailyLimit && (
+                    <p className="text-center text-sm text-slate-600">
+                      Upgrade to Pro for unlimited quizzes
+                    </p>
+                  )}
+                </form>
+              </section>
 
-          {isGenerating && (
-            <div className="mt-6 rounded-lg border border-slate-200 p-8">
-              <div className="flex flex-col items-center justify-center gap-4">
-                <span className="inline-block h-10 w-10 animate-spin rounded-full border-4 border-slate-300 border-t-slate-700" />
-                <p className="text-base italic text-slate-500">
-                  {loadingMessages[loadingMessageIndex]}
-                </p>
-              </div>
-            </div>
-          )}
+              <section className="mt-10 pb-8">
+                <h2 className="text-xl font-semibold sm:text-2xl">
+                  Generated Questions
+                </h2>
 
-          {!isGenerating && quizResults.length === 0 && (
-            <p className="mt-4 text-slate-600">
-              No questions yet. Fill the form above and click Generate Quiz.
-            </p>
-          )}
-
-          {!isGenerating && errorMessage && (
-            <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              {errorMessage}
-            </p>
-          )}
-
-          {!isGenerating && downloadMessage && (
-            <p className="mt-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-              {downloadMessage}
-            </p>
-          )}
-
-              {!isGenerating && quizResults.length > 0 && (
-                <div className="mt-6 space-y-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                    <button
-                      type="button"
-                      onClick={handleDownloadPdf}
-                      className="w-full rounded-lg bg-green-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-green-700 sm:w-auto"
-                    >
-                      Download PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleCopyToClipboard}
-                      className="w-full rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 sm:w-auto"
-                    >
-                      {isCopied ? "Copied!" : "Copy to Clipboard"}
-                    </button>
-                  </div>
-
-                  {quizResults.map((item, index) => {
-                    const resolvedType = normalizeQuestionType(item.type, "mcq");
-                    const questionParts =
-                      resolvedType === "fillinblanks"
-                        ? item.question.split("_______")
-                        : [item.question];
-
-                    return (
-                      <article
-                        key={`${item.question}-${index}`}
-                        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
+                {isFreeUser &&
+                  quizResults.length > 0 &&
+                  showPostGenerateNudge && (
+                    <div className="mt-4 flex items-center justify-between gap-3 rounded-md bg-violet-50 px-4 py-3 text-sm text-violet-900">
+                      <Link
+                        href="/pricing"
+                        className="font-medium hover:underline"
                       >
-                        <div className="mb-3 flex items-center justify-between gap-3">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getTypeBadgeClass(
-                              resolvedType,
-                            )}`}
-                          >
-                            {getTypeLabel(resolvedType)}
-                          </span>
-                        </div>
-
-                        {(resolvedType === "fillinblanks" ||
-                          resolvedType === "shortanswer") && (
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            {resolvedType === "fillinblanks"
-                              ? "Fill in the blank"
-                              : "Short answer"}
-                          </p>
-                        )}
-
-                        <h3 className="text-lg font-semibold">
-                          {index + 1}.{" "}
-                          {resolvedType === "fillinblanks" ? (
-                            <>
-                              {questionParts[0]}
-                              <span className="font-bold text-purple-700">_______</span>
-                              {questionParts.slice(1).join("_______")}
-                            </>
-                          ) : (
-                            item.question
-                          )}
-                        </h3>
-
-                        {resolvedType === "truefalse" && (
-                          <div className="mt-4 grid grid-cols-2 gap-3">
-                            <button
-                              type="button"
-                              className="rounded-full border-2 border-blue-400 px-4 py-2 font-semibold text-blue-700 transition hover:bg-blue-50"
-                            >
-                              True
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-full border-2 border-blue-400 px-4 py-2 font-semibold text-blue-700 transition hover:bg-blue-50"
-                            >
-                              False
-                            </button>
-                          </div>
-                        )}
-
-                        {(resolvedType === "mcq" || resolvedType === "fillinblanks") && (
-                          <ul className="mt-4 space-y-2">
-                            {item.options.slice(0, 4).map((option, optionIndex) => (
-                              <li
-                                key={`${item.question}-${option}`}
-                                className="rounded-md border border-slate-200 px-4 py-2 text-slate-700"
-                              >
-                                <span className="mr-2 font-medium">
-                                  {optionLabels[optionIndex]}.
-                                </span>
-                                {option}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-
-                        {resolvedType === "shortanswer" && (
-                          <textarea
-                            value={shortAnswerDrafts[index] ?? ""}
-                            onChange={(event) =>
-                              setShortAnswerDrafts((prev) => ({
-                                ...prev,
-                                [index]: event.target.value,
-                              }))
-                            }
-                            placeholder="Type expected student answer..."
-                            className="mt-4 min-h-28 w-full rounded-md border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                          />
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => toggleAnswer(index)}
-                          className="mt-5 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                        >
-                          {resolvedType === "shortanswer"
-                            ? openAnswers[index]
-                              ? "Hide Model Answer"
-                              : "Show Model Answer"
-                            : openAnswers[index]
-                              ? "Hide Answer"
-                              : "Show Answer"}
-                        </button>
-
-                        {openAnswers[index] && (
-                          <p className="mt-3 rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                            <span className="font-semibold">
-                              {resolvedType === "shortanswer"
-                                ? "Model Answer:"
-                                : "Correct Answer:"}
-                            </span>{" "}
-                            {item.answer}
-                          </p>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          </div>
-
-          <aside className="h-fit w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-6">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold">Recent Quizzes</h3>
-              {quizHistory.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearQuizHistory}
-                  className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
-                >
-                  Clear All
-                </button>
-              )}
-            </div>
-
-            {quizHistory.length === 0 && (
-              <p className="mt-3 text-sm text-slate-600">
-                No quizzes yet — generate your first one!
-              </p>
-            )}
-
-            {quizHistory.length > 0 && (
-              <div className="mt-4 space-y-3">
-                {quizHistory.map((item) => (
-                  <article
-                    key={item.id}
-                    className="rounded-lg border border-slate-200 p-4"
-                  >
-                    <p className="font-semibold">{item.topic}</p>
-                    <p className="text-xs text-slate-500">
-                      {item.difficulty} | {item.numQuestions} questions
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {new Date(item.createdAt).toLocaleString()}
-                    </p>
-
-                    <div className="mt-3 flex items-center gap-2">
+                        Want True/False & Fill in the Blanks? Upgrade to Pro →
+                      </Link>
                       <button
                         type="button"
-                        onClick={() => handleLoadHistoryQuiz(item)}
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
-                      >
-                        Load
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteHistoryQuiz(item.id)}
-                        className="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700"
-                        aria-label={`Delete ${item.topic}`}
+                        onClick={() => setShowPostGenerateNudge(false)}
+                        className="rounded px-2 py-1 text-violet-700 transition hover:bg-violet-100"
+                        aria-label="Dismiss upgrade nudge"
                       >
                         X
                       </button>
                     </div>
-                  </article>
-                ))}
+                  )}
+
+                {isGenerating && (
+                  <div className="mt-6 rounded-lg border border-slate-200 p-8">
+                    <div className="flex flex-col items-center justify-center gap-4">
+                      <span className="inline-block h-10 w-10 animate-spin rounded-full border-4 border-slate-300 border-t-slate-700" />
+                      <p className="text-base italic text-slate-500">
+                        {loadingMessages[loadingMessageIndex]}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {!isGenerating && quizResults.length === 0 && (
+                  <p className="mt-4 text-slate-600">
+                    No questions yet. Fill the form above and click Generate
+                    Quiz.
+                  </p>
+                )}
+
+                {!isGenerating && errorMessage && (
+                  <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    {errorMessage}
+                  </p>
+                )}
+
+                {!isGenerating && downloadMessage && (
+                  <p className="mt-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                    {downloadMessage}
+                  </p>
+                )}
+
+                {!isGenerating && quizResults.length > 0 && (
+                  <div className="mt-6 space-y-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                      <button
+                        type="button"
+                        onClick={handleDownloadPdf}
+                        className="w-full rounded-lg bg-green-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-green-700 sm:w-auto"
+                      >
+                        Download PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCopyToClipboard}
+                        className="w-full rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 sm:w-auto"
+                      >
+                        {isCopied ? "Copied!" : "Copy to Clipboard"}
+                      </button>
+                    </div>
+
+                    {quizResults.map((item, index) => {
+                      const resolvedType = normalizeQuestionType(
+                        item.type,
+                        "mcq",
+                      );
+                      const questionParts =
+                        resolvedType === "fillinblanks"
+                          ? item.question.split("_______")
+                          : [item.question];
+
+                      return (
+                        <article
+                          key={`${item.question}-${index}`}
+                          className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
+                        >
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getTypeBadgeClass(
+                                resolvedType,
+                              )}`}
+                            >
+                              {getTypeLabel(resolvedType)}
+                            </span>
+                          </div>
+
+                          {(resolvedType === "fillinblanks" ||
+                            resolvedType === "shortanswer") && (
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              {resolvedType === "fillinblanks"
+                                ? "Fill in the blank"
+                                : "Short answer"}
+                            </p>
+                          )}
+
+                          <h3 className="text-lg font-semibold">
+                            {index + 1}.{" "}
+                            {resolvedType === "fillinblanks" ? (
+                              <>
+                                {questionParts[0]}
+                                <span className="font-bold text-purple-700">
+                                  _______
+                                </span>
+                                {questionParts.slice(1).join("_______")}
+                              </>
+                            ) : (
+                              item.question
+                            )}
+                          </h3>
+
+                          {resolvedType === "truefalse" && (
+                            <div className="mt-4 grid grid-cols-2 gap-3">
+                              <button
+                                type="button"
+                                className="rounded-full border-2 border-blue-400 px-4 py-2 font-semibold text-blue-700 transition hover:bg-blue-50"
+                              >
+                                True
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-full border-2 border-blue-400 px-4 py-2 font-semibold text-blue-700 transition hover:bg-blue-50"
+                              >
+                                False
+                              </button>
+                            </div>
+                          )}
+
+                          {(resolvedType === "mcq" ||
+                            resolvedType === "fillinblanks") && (
+                            <ul className="mt-4 space-y-2">
+                              {item.options
+                                .slice(0, 4)
+                                .map((option, optionIndex) => (
+                                  <li
+                                    key={`${item.question}-${option}`}
+                                    className="rounded-md border border-slate-200 px-4 py-2 text-slate-700"
+                                  >
+                                    <span className="mr-2 font-medium">
+                                      {optionLabels[optionIndex]}.
+                                    </span>
+                                    {option}
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+
+                          {resolvedType === "shortanswer" && (
+                            <textarea
+                              value={shortAnswerDrafts[index] ?? ""}
+                              onChange={(event) =>
+                                setShortAnswerDrafts((prev) => ({
+                                  ...prev,
+                                  [index]: event.target.value,
+                                }))
+                              }
+                              placeholder="Type expected student answer..."
+                              className="mt-4 min-h-28 w-full rounded-md border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                            />
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => toggleAnswer(index)}
+                            className="mt-5 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                          >
+                            {resolvedType === "shortanswer"
+                              ? openAnswers[index]
+                                ? "Hide Model Answer"
+                                : "Show Model Answer"
+                              : openAnswers[index]
+                                ? "Hide Answer"
+                                : "Show Answer"}
+                          </button>
+
+                          {openAnswers[index] && (
+                            <p className="mt-3 rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                              <span className="font-semibold">
+                                {resolvedType === "shortanswer"
+                                  ? "Model Answer:"
+                                  : "Correct Answer:"}
+                              </span>{" "}
+                              {item.answer}
+                            </p>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <aside className="h-fit w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-6">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold">Recent Quizzes</h3>
+                {quizHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearQuizHistory}
+                    className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+                  >
+                    Clear All
+                  </button>
+                )}
               </div>
-            )}
-          </aside>
+
+              {quizHistory.length === 0 && (
+                <p className="mt-3 text-sm text-slate-600">
+                  No quizzes yet — generate your first one!
+                </p>
+              )}
+
+              {quizHistory.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  {quizHistory.map((item) => (
+                    <article
+                      key={item.id}
+                      className="rounded-lg border border-slate-200 p-4"
+                    >
+                      <p className="font-semibold">{item.topic}</p>
+                      <p className="text-xs text-slate-500">
+                        {item.difficulty} | {item.numQuestions} questions
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {new Date(item.createdAt).toLocaleString()}
+                      </p>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleLoadHistoryQuiz(item)}
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                        >
+                          Load
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHistoryQuiz(item.id)}
+                          className="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700"
+                          aria-label={`Delete ${item.topic}`}
+                        >
+                          X
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </aside>
+          </div>
         </div>
-      </div>
 
         {isLocalhost && (
           <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 pb-6 sm:px-6">
             <button
-  type="button"
-  onClick={() => {
-    localStorage.removeItem("quizai_daily_count");
-    localStorage.removeItem("quizai_last_date");
-    localStorage.removeItem("quizai_demo_used");
-    window.location.reload();
-  }}
-  className="text-xs text-slate-400 transition hover:text-slate-600"
->
-  [dev: reset limits]
-</button>
+              type="button"
+              onClick={() => {
+                localStorage.removeItem("quizai_daily_count");
+                localStorage.removeItem("quizai_last_date");
+                localStorage.removeItem("quizai_demo_used");
+                window.location.reload();
+              }}
+              className="text-xs text-slate-400 transition hover:text-slate-600"
+            >
+              [dev: reset limits]
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -1009,54 +1070,58 @@ if (isDemoActive) {
               X
             </button>
 
-            <h3 className="text-xl font-bold text-purple-700">Unlock Pro Features</h3>
+            <h3 className="text-xl font-bold text-purple-700">
+              Unlock Pro Features
+            </h3>
 
             <ul className="mt-5 space-y-3 text-sm text-slate-700">
-              <li>✓ All question types (True/False, Fill in Blanks, Short Answer)</li>
+              <li>
+                ✓ All question types (True/False, Fill in Blanks, Short Answer)
+              </li>
               <li>✓ Up to 30 questions per quiz</li>
               <li>✓ Unlimited quizzes every day</li>
             </ul>
 
             <div className="mt-6 space-y-3">
-  {!demoQuizUsed ? (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          setIsDemoActive(true);
-          setIsPro(true);
-          setDemoQuizUsed(true);
-          setShowUpgradeModal(false);
-          try {
-            localStorage.setItem("quizai_demo_used", "true");
-          } catch {}
-        }}
-        className="inline-flex w-full items-center justify-center rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700"
-      >
-        🎁 Try Pro Free — 1 Demo Quiz
-      </button>
-      <p className="text-center text-xs text-slate-500">
-        No payment needed · 1 free Pro quiz
-      </p>
-    </>
-  ) : (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center">
-      <p className="text-sm font-medium text-amber-800">
-        You have already used your free demo.
-      </p>
-      <p className="mt-1 text-xs text-amber-600">
-        Upgrade to Pro to keep all features.
-      </p>
-    </div>
-  )}
+              {!demoQuizUsed ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDemoActive(true);
+                      setIsPro(true);
+                      setDemoQuizUsed(true);
+                      setShowUpgradeModal(false);
+                      try {
+                        localStorage.setItem("quizai_demo_used", "true");
+                      } catch {}
+                    }}
+                    className="inline-flex w-full items-center justify-center rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700"
+                  >
+                    🎁 Try Pro Free — 1 Demo Quiz
+                  </button>
+                  <p className="text-center text-xs text-slate-500">
+                    No payment needed · 1 free Pro quiz
+                  </p>
+                </>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+                  <p className="text-sm font-medium text-amber-800">
+                    You have already used your free demo.
+                  </p>
+                  <p className="mt-1 text-xs text-amber-600">
+                    Upgrade to Pro to keep all features.
+                  </p>
+                </div>
+              )}
 
-  <Link
-    href="/pricing"
-    className="inline-flex w-full items-center justify-center rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
-  >
-    Upgrade for $5/mo →
-  </Link>
-</div>
+              <Link
+                href="/pricing"
+                className="inline-flex w-full items-center justify-center rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
+              >
+                Upgrade for $5/mo →
+              </Link>
+            </div>
 
             <button
               type="button"
