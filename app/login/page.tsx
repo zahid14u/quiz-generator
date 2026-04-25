@@ -1,6 +1,6 @@
 "use client";
 
-import { supabase } from "@/app/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
