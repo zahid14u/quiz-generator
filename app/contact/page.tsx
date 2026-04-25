@@ -10,17 +10,38 @@ export default function ContactPage() {
     subject: "general",
     message: "",
   });
+  const [isLoading, setIsLoading] = useState(false);
+const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Opens email client with pre-filled message
-    const mailtoLink = `mailto:your@email.com?subject=${encodeURIComponent(
-      `QuizAI Support: ${formData.subject}`
-    )}&body=${encodeURIComponent(
-      `Name: ${formData.name}\nEmail: ${formData.email}\n\nMessage:\n${formData.message}`
-    )}`;
-    window.open(mailtoLink);
-    setSubmitted(true);
+    setIsLoading(true);
+    setError("");
+    try {
+      const response = await fetch("https://formspree.io/f/xjgjlzjg", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          subject: "QuizAI Support: " + formData.subject,
+          message: formData.message,
+        }),
+      });
+      if (response.ok) {
+        setSubmitted(true);
+        setFormData({ name: "", email: "", subject: "general", message: "" });
+      } else {
+        setError("Something went wrong. Please email us directly at zahid.14u@gmail.com");
+      }
+    } catch {
+      setError("Something went wrong. Please email us directly at zahid.14u@gmail.com");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -59,7 +80,7 @@ export default function ContactPage() {
             <h3 className="mt-3 font-semibold">WhatsApp</h3>
             <p className="mt-2 text-sm text-slate-600">Quick questions answered fast on WhatsApp.</p>
             
-              <a href="https://wa.me/923039382848"
+              <a href="https://wa.me/923039382849"
               target="_blank"
               rel="noopener noreferrer"
               className="mt-4 block text-sm font-medium text-purple-600 hover:underline"
@@ -86,8 +107,8 @@ export default function ContactPage() {
             {submitted ? (
               <div className="mt-6 rounded-lg bg-green-50 border border-green-200 p-6 text-center">
                 <div className="text-3xl">✅</div>
-                <h3 className="mt-3 font-semibold text-green-800">Message Sent!</h3>
-                <p className="mt-2 text-sm text-green-700">Your email client should have opened. We will respond within 24 hours.</p>
+                <h3 className="mt-3 font-semibold text-green-800">Message Received!</h3>
+                <p className="mt-2 text-sm text-green-700">Thank you! We will reply to your email within 24 hours.</p>
                 <button
                   onClick={() => setSubmitted(false)}
                   className="mt-4 text-sm text-purple-600 hover:underline"
@@ -104,7 +125,7 @@ export default function ContactPage() {
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Muhammad Zahid Ghaffar"
+                    placeholder="Your Name"
                     className="w-full rounded-md border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
                   />
                 </div>
@@ -116,7 +137,7 @@ export default function ContactPage() {
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="zahid.14u@gmail.com"
+                    placeholder="Your email address"
                     className="w-full rounded-md border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
                   />
                 </div>
@@ -149,11 +170,15 @@ export default function ContactPage() {
                   />
                 </div>
 
+                {error && (
+                  <div className="text-red-600 text-sm">{error}</div>
+                )}
                 <button
-                  type="submit"
-                  className="w-full rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
-                >
-                  Send Message →
+                     type="submit"
+                    disabled={isLoading}
+                    className="w-full rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:bg-slate-400"
+                    >
+                    {isLoading ? "Sending..." : "Send Message →   "}
                 </button>
               </form>
             )}
