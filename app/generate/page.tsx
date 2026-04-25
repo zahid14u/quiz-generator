@@ -1130,6 +1130,12 @@ export default function GeneratePage() {
             >
               Maybe later
             </button>
+            <p className="mt-2 text-center text-xs text-slate-400">
+              Already have Pro?{" "}
+              <Link href="/login" className="text-purple-600 hover:underline">
+                Login →
+              </Link>
+            </p>
           </div>
         </div>
       )}

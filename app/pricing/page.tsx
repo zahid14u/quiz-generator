@@ -142,6 +142,12 @@ export default function PricingPage() {
             <p className="mt-2 text-center text-xs text-slate-500">
               Cancel anytime · Secure payment
             </p>
+            <p className="mt-2 text-center text-xs text-slate-500">
+              Already a Pro member?{" "}
+              <Link href="/login" className="text-purple-600 hover:underline">
+                Login here →
+              </Link>
+            </p>
           </div>
         </div>
 

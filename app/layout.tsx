@@ -52,6 +52,9 @@ export default function RootLayout({
                 <a href="/privacy" className="hover:text-slate-900">
                   Privacy
                 </a>
+                <a href="/login" className="text-xs hover:text-slate-900">
+                  Pro Login
+                </a>
               </div>
               <p className="text-xs text-slate-500">
                 © 2025 Modern AI Softech. All rights reserved.
