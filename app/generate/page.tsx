@@ -86,7 +86,7 @@ function getTypeLabel(type: NonNullable<QuizQuestion["type"]>): string {
 export default function GeneratePage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
   const [topic, setTopic] = useState("");
   const [questionCount, setQuestionCount] = useState("10");
   const [questionType, setQuestionType] = useState("mcq");
@@ -554,37 +554,6 @@ export default function GeneratePage() {
   return (
     <div style={{ minHeight: "100vh", position: "relative" }}>
       <main className="min-h-screen bg-white text-slate-900">
-        <nav className="w-full bg-slate-900 text-white">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
-            <Link
-              href="/"
-              className="whitespace-nowrap text-lg font-bold tracking-tight sm:text-xl"
-            >
-              QuizAI
-            </Link>
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Link
-                href="/pricing"
-                className="whitespace-nowrap rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
-              >
-                Pricing
-              </Link>
-              <Link
-                href="/"
-                className="whitespace-nowrap rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
-              >
-                Home
-              </Link>
-              <Link
-                href="/contact"
-                className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
-              >
-                Support
-              </Link>
-            </div>
-          </div>
-        </nav>
-
         {isFreeUser && (
           <div
             className={

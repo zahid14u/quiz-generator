@@ -1,19 +1,19 @@
-import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from "@/lib/supabase";
+import { useState } from "react";
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const handleGoogleLogin = async () => {
     try {
       await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: "google",
         options: {
-          redirectTo: window.location.origin + '/auth/callback',
-          queryParams: { access_type: 'offline', prompt: 'consent' }
-        }
+          redirectTo: window.location.origin + "/auth/callback",
+          queryParams: { access_type: "offline", prompt: "consent" },
+        },
       });
     } catch (error) {
       console.error(error);
@@ -25,12 +25,12 @@ const LoginPage = () => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
-        password
+        password,
       });
       if (error) {
         setError(error.message);
       } else {
-        window.location.href = '/generate';
+        window.location.href = "/generate";
       }
     } catch (error) {
       console.error(error);
@@ -41,11 +41,19 @@ const LoginPage = () => {
     <div className="flex items-center justify-center h-screen">
       <div className="max-w-md w-full mx-auto p-6 bg-white rounded-lg shadow-md">
         <div className="flex items-center justify-between mb-4">
-          <a href="#" className="text-2xl font-bold text-purple-500">QuizAI</a>
+          <a href="#" className="text-2xl font-bold text-purple-500">
+            QuizAI
+          </a>
           <nav className="space-x-4">
-            <a href="#" className="text-gray-600 hover:text-gray-900">Generate</a>
-            <a href="#" className="text-gray-600 hover:text-gray-900">Pricing</a>
-            <a href="#" className="text-gray-600 hover:text-gray-900">Home</a>
+            <a href="#" className="text-gray-600 hover:text-gray-900">
+              Generate
+            </a>
+            <a href="#" className="text-gray-600 hover:text-gray-900">
+              Pricing
+            </a>
+            <a href="#" className="text-gray-600 hover:text-gray-900">
+              Home
+            </a>
           </nav>
         </div>
         <div className="flex flex-col space-y-4">
@@ -104,7 +112,10 @@ const LoginPage = () => {
             <a href="/pricing" className="text-gray-600 hover:text-gray-900">
               Want Pro access? See pricing →
             </a>
-            <a href="/forgot-password" className="text-gray-600 hover:text-gray-900">
+            <a
+              href="/forgot-password"
+              className="text-gray-600 hover:text-gray-900"
+            >
               Forgot password?
             </a>
           </div>

@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useState } from "react";
 
 export default function ContactPage() {
@@ -50,37 +49,6 @@ export default function ContactPage() {
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
-      <nav className="w-full bg-slate-900 text-white">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <Link
-            href="/"
-            className="text-lg font-bold tracking-tight sm:text-xl"
-          >
-            QuizAI
-          </Link>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Link
-              href="/pricing"
-              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
-            >
-              Pricing
-            </Link>
-            <Link
-              href="/generate"
-              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
-            >
-              Generate
-            </Link>
-            <Link
-              href="/"
-              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4"
-            >
-              Home
-            </Link>
-          </div>
-        </div>
-      </nav>
-
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold sm:text-4xl">Contact & Support</h1>
