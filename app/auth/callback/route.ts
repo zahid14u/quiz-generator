@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const responseHeaders = new Headers();
 
   const supabase = createServerClient(
@@ -14,11 +14,13 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll: () =>
-          cookieStore.getAll().map((cookie) => ({
+        getAll: async () => {
+          const allCookies = await cookieStore.getAll();
+          return allCookies.map((cookie) => ({
             name: cookie.name,
             value: cookie.value,
-          })),
+          }));
+        },
         setAll: (cookiesToSet, headers) => {
           cookiesToSet.forEach(({ name, value, options }) => {
             responseHeaders.append(
