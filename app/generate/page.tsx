@@ -1,7 +1,9 @@
 "use client";
 
+import { supabase } from "@/lib/supabase";
 import jsPDF from "jspdf";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 
 type QuizQuestion = {
@@ -82,6 +84,9 @@ function getTypeLabel(type: NonNullable<QuizQuestion["type"]>): string {
 }
 
 export default function GeneratePage() {
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
+  const [user, setUser] = useState(null);
   const [topic, setTopic] = useState("");
   const [questionCount, setQuestionCount] = useState("10");
   const [questionType, setQuestionType] = useState("mcq");
@@ -104,6 +109,17 @@ export default function GeneratePage() {
   const [isPro, setIsPro] = useState(false);
   const [isDemoActive, setIsDemoActive] = useState(false);
   const [demoQuizUsed, setDemoQuizUsed] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        router.push("/login");
+      } else {
+        setUser(session.user);
+        setAuthChecked(true);
+      }
+    });
+  }, []);
 
   const isFreeUser = !isPro;
   const hasReachedDailyLimit =
@@ -526,6 +542,14 @@ export default function GeneratePage() {
     if (type === "shortanswer") return "bg-green-100 text-green-700";
     return "bg-slate-100 text-slate-700";
   };
+
+  if (!authChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-purple-600 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", position: "relative" }}>
