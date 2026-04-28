@@ -1,6 +1,6 @@
 "use client";
 
-import { supabase } from "@/lib/supabase";
+import { getAuthRedirectUrl, supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -24,10 +24,11 @@ export default function LoginPage() {
     setError("");
     setIsLoading(true);
 
+    const callbackUrl = getAuthRedirectUrl();
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin + "/auth/callback",
+        redirectTo: callbackUrl,
       },
     });
 

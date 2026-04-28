@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { getAuthRedirectUrl, supabase } from "@/lib/supabase";
 import { useState } from "react";
 
 const LoginPage = () => {
@@ -8,10 +8,11 @@ const LoginPage = () => {
 
   const handleGoogleLogin = async () => {
     try {
+      const callbackUrl = getAuthRedirectUrl();
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.origin + "/auth/callback",
+          redirectTo: callbackUrl,
           queryParams: { access_type: "offline", prompt: "consent" },
         },
       });

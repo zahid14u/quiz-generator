@@ -1,6 +1,6 @@
 "use client";
 
-import { supabase } from "@/lib/supabase";
+import { getAuthRedirectUrl, supabase } from "@/lib/supabase";
 import { useState } from "react";
 
 const SignUpPage = () => {
@@ -13,10 +13,11 @@ const SignUpPage = () => {
 
   const handleGoogleSignup = async () => {
     try {
+      const callbackUrl = getAuthRedirectUrl();
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.origin + "/auth/callback",
+          redirectTo: callbackUrl,
         },
       });
     } catch (error) {
@@ -31,12 +32,13 @@ const SignUpPage = () => {
       return;
     }
     try {
+      const callbackUrl = getAuthRedirectUrl();
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: { full_name: fullName },
-          emailRedirectTo: window.location.origin + "/auth/callback",
+          emailRedirectTo: callbackUrl,
         },
       });
       if (error) {
