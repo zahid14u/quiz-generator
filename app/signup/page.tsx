@@ -213,7 +213,7 @@ export default function SignupPage() {
             </button>
           </form>
 
-          <div className="mt-6 space-y-3 text-center text-sm text-slate-600">
+          <div className="mt-6 space-y-3 text-center text-xs sm:text-sm text-slate-600">
             <p>
               Already have account?{" "}
               <Link

@@ -1,62 +1,50 @@
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import AuthHeader from "./components/AuthHeader";
+import Link from "next/link";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "QuizAI",
-  description: "AI-powered quiz generation with Supabase auth",
-};
-
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      suppressHydrationWarning
-    >
-      <body className="min-h-screen bg-slate-950 text-slate-100">
-        <AuthHeader />
-        <main>{children}</main>
-        <footer className="mt-16 border-t border-slate-800 bg-slate-950">
-          <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-            <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-              <p className="text-sm font-bold text-slate-300">
-                QuizAI — by Modern AI Softech
-              </p>
-              <div className="flex flex-wrap justify-center gap-6 text-sm text-slate-500">
-                <a href="/" className="hover:text-slate-200">
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        {children}
+        <footer className="border-t border-slate-200 bg-slate-50">
+          <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+            <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
+              <p className="text-sm font-bold">QuizAI — by Modern AI Softech</p>
+              <div className="flex flex-wrap justify-center gap-4 text-sm text-slate-600">
+                <Link href="/" className="hover:text-slate-900">
                   Home
-                </a>
-                <a href="/pricing" className="hover:text-slate-200">
+                </Link>
+                <Link href="/pricing" className="hover:text-slate-900">
                   Pricing
-                </a>
-                <a href="/generate" className="hover:text-slate-200">
+                </Link>
+                <Link href="/generate" className="hover:text-slate-900">
                   Generate
-                </a>
-                <a href="/contact" className="hover:text-slate-200">
+                </Link>
+                <Link href="/contact" className="hover:text-slate-900">
                   Contact
-                </a>
-                <a href="/terms" className="hover:text-slate-200">
+                </Link>
+                <Link href="/terms" className="hover:text-slate-900">
                   Terms
-                </a>
-                <a href="/privacy" className="hover:text-slate-200">
+                </Link>
+                <Link href="/privacy" className="hover:text-slate-900">
                   Privacy
-                </a>
+                </Link>
+                <Link href="/login" className="hover:text-slate-900">
+                  Login
+                </Link>
               </div>
               <p className="text-xs text-slate-500">
                 © 2025 Modern AI Softech. All rights reserved.

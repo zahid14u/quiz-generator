@@ -1,4 +1,8 @@
+"use client";
+
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 const features = [
   {
@@ -19,29 +23,100 @@ const features = [
 ];
 
 export default function HomePage() {
+  const [session, setSession] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+      },
+    );
+
+    return () => authListener?.subscription?.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+  };
+
+  const userEmail = session?.user?.email ?? "";
+  const userInitial = userEmail ? userEmail.charAt(0).toUpperCase() : "U";
+
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="mx-auto flex w-full max-w-6xl flex-col px-4 sm:px-6">
-        <nav className="flex items-center justify-between gap-3 border-b border-slate-200 py-5">
+        <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 py-4 sm:py-5">
           <span className="whitespace-nowrap text-lg font-bold tracking-tight sm:text-xl">
             QuizAI
           </span>
-          <div className="flex items-center gap-2 sm:gap-3">
+
+          <div className="hidden items-center gap-2 text-xs sm:flex sm:text-sm">
+            <Link
+              href="/"
+              className="rounded-md px-2 py-2 text-slate-700 transition hover:bg-slate-100 sm:px-3"
+            >
+              Home
+            </Link>
             <Link
               href="/pricing"
-              className="whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 sm:px-4"
+              className="rounded-md px-2 py-2 text-slate-700 transition hover:bg-slate-100 sm:px-3"
             >
               Pricing
             </Link>
             <Link
               href="/generate"
-              className="whitespace-nowrap rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 sm:px-4"
+              className="rounded-md px-2 py-2 text-slate-700 transition hover:bg-slate-100 sm:px-3"
             >
-              Get Started
+              Generate
             </Link>
-            <Link href="/contact" className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-white/20 sm:px-4">
-  Support
-</Link>
+            <Link
+              href="/contact"
+              className="rounded-md px-2 py-2 text-slate-700 transition hover:bg-slate-100 sm:px-3"
+            >
+              Support
+            </Link>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!session ? (
+              <>
+                <Link
+                  href="/login"
+                  className="rounded-md bg-white/10 px-2 py-2 text-xs font-semibold text-slate-900 transition hover:bg-white sm:px-3 sm:text-sm"
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/signup"
+                  className="rounded-md bg-purple-600 px-2 py-2 text-xs font-semibold text-white transition hover:bg-purple-500 sm:px-3 sm:text-sm"
+                >
+                  Sign Up
+                </Link>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 text-xs sm:text-sm">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-600 text-sm text-white">
+                    {userInitial}
+                  </span>
+                  <span className="hidden min-w-[120px] truncate text-slate-700 sm:inline">
+                    {userEmail}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="rounded-md bg-slate-900 px-2 py-2 text-xs font-semibold text-white transition hover:bg-slate-700 sm:px-3 sm:text-sm"
+                >
+                  Logout
+                </button>
+              </>
+            )}
           </div>
         </nav>
 
@@ -80,7 +155,6 @@ export default function HomePage() {
           </div>
         </section>
       </div>
-     
     </main>
   );
 }

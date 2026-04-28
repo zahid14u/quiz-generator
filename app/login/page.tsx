@@ -153,7 +153,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 space-y-3 text-center text-sm text-slate-600">
+          <div className="mt-6 space-y-3 text-center text-xs sm:text-sm text-slate-600">
             <p>
               No account?{" "}
               <Link
