@@ -25,7 +25,14 @@ const features = [
 export default function HomePage() {
   const [session, setSession] = useState<any>(null);
 
-  useEffect(() => {
+  useEffect(function cleanUrlHash() {
+    // Clean URL hash after OAuth redirect
+    if (window.location.hash.includes("access_token")) {
+      window.history.replaceState(null, "", "/");
+    }
+  }, []);
+
+  useEffect(function initializeAuth() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
@@ -36,7 +43,9 @@ export default function HomePage() {
       },
     );
 
-    return () => authListener?.subscription?.unsubscribe();
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
   }, []);
 
   const handleLogout = async () => {

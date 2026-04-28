@@ -83,6 +83,31 @@ function getTypeLabel(type: NonNullable<QuizQuestion["type"]>): string {
   return "MCQ";
 }
 
+const checkProStatus = async (userId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("is_pro, pro_expires_at, plan")
+      .eq("id", userId)
+      .single();
+
+    if (error) return false;
+
+    if (!data.is_pro) return false;
+
+    // Check if Pro has expired
+    if (data.pro_expires_at) {
+      const expiryDate = new Date(data.pro_expires_at);
+      const now = new Date();
+      if (now > expiryDate) return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export default function GeneratePage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
@@ -111,17 +136,48 @@ export default function GeneratePage() {
   const [demoQuizUsed, setDemoQuizUsed] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        router.push("/login");
-      } else {
+    // Clean URL hash after OAuth redirect
+    if (typeof window !== "undefined" && window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+
+    let retries = 0;
+    const maxRetries = 5;
+    const checkSession = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) {
+          // Retry a few times if session is not available yet
+          if (retries < maxRetries) {
+            retries++;
+            setTimeout(checkSession, 500);
+            return;
+          }
+          router.push("/login");
+          return;
+        }
         setUser(session.user);
         setAuthChecked(true);
+        // Check real Pro status from database
+        const proStatus = await checkProStatus(session.user.id);
+        setIsPro(proStatus);
+      } catch (error) {
+        console.error("Session check error:", error);
+        if (retries < maxRetries) {
+          retries++;
+          setTimeout(checkSession, 500);
+        } else {
+          router.push("/login");
+        }
       }
-    });
-  }, []);
+    };
 
-  const isFreeUser = !isPro;
+    checkSession();
+  }, [router]);
+
+  const isFreeUser = !isPro && !isDemoActive;
   const hasReachedDailyLimit =
     isFreeUser && dailyQuizCount >= FREE_QUIZ_DAILY_LIMIT;
 
@@ -151,9 +207,6 @@ export default function GeneratePage() {
   useEffect(() => {
     const localhost = window.location.hostname === "localhost";
     setIsLocalhost(localhost);
-    if (localhost && localStorage.getItem("quizai_pro") === "true") {
-      setIsPro(true);
-    }
     if (localStorage.getItem("quizai_demo_used") === "true") {
       setDemoQuizUsed(true);
     }
