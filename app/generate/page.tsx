@@ -1,12 +1,11 @@
 "use client";
-
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabase";
 import jsPDF from "jspdf";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
-
+import * as XLSX from "xlsx";
 type QuizQuestion = {
   type?: "mcq" | "truefalse" | "fillinblanks" | "shortanswer";
   question: string;
@@ -548,7 +547,42 @@ export default function GeneratePage() {
       setErrorMessage("Could not copy text. Please try again.");
     }
   };
+  const handleDownloadKahoot = () => {
+    if (quizResults.length === 0) return;
 
+    // Filter: Kahoot strictly supports Multiple Choice and True/False.
+    const supportedQuestions = quizResults.filter(
+      (q) => q.type === "mcq" || q.type === "truefalse" || !q.type,
+    );
+
+    if (supportedQuestions.length === 0) {
+      alert("Kahoot export only supports MCQ and True/False questions.");
+      return;
+    }
+
+    const kahootData = supportedQuestions.map((q) => {
+      // Find 1-based index for correct answer (1-4)
+      const correctIndex = q.options.findIndex((opt) => opt === q.answer) + 1;
+
+      return {
+        Question: q.question.substring(0, 120), // 120 char limit[cite: 1]
+        "Answer 1": q.options[0]?.substring(0, 75) || "", // 75 char limit[cite: 1]
+        "Answer 2": q.options[1]?.substring(0, 75) || "",
+        "Answer 3": q.options[2]?.substring(0, 75) || "",
+        "Answer 4": q.options[3]?.substring(0, 75) || "",
+        "Time limit (sec)": 20, // Default recommended limit[cite: 1]
+        "Correct answer(s)": correctIndex > 0 ? correctIndex : 1,
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(kahootData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Questions");
+    XLSX.writeFile(
+      workbook,
+      `Kahoot-${(topic || "quiz").replace(/\s+/g, "-")}.xlsx`,
+    );
+  };
   const handleLoadHistoryQuiz = (item: QuizHistoryItem) => {
     setTopic(item.topic);
     setDifficulty(item.difficulty);
@@ -875,8 +909,36 @@ export default function GeneratePage() {
                       >
                         {isCopied ? "Copied!" : "Copy to Clipboard"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadKahoot}
+                        className="w-full rounded-lg bg-emerald-700 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 sm:w-auto flex items-center justify-center gap-2"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        Download Kahoot (Excel)
+                      </button>
                     </div>
-
+                    <div className="rounded-lg bg-blue-50 border border-blue-100 p-4">
+                      <p className="text-[11px] sm:text-xs text-blue-800 leading-relaxed">
+                        <strong>Note:</strong> Kahoot only supports Multiple
+                        Choice and True/False. Short Answer and
+                        Fill-in-the-blank questions will be skipped in the
+                        export. Ensure questions are under 120 characters and
+                        answers under 75.
+                      </p>
+                    </div>
                     {quizResults.map((item, index) => {
                       const resolvedType = normalizeQuestionType(
                         item.type,
