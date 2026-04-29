@@ -18,6 +18,16 @@ export default function LoginPage() {
         router.push("/generate");
       }
     });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        router.push("/generate");
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleGoogleLogin = async () => {

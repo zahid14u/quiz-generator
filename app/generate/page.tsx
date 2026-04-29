@@ -141,41 +141,46 @@ export default function GeneratePage() {
       window.history.replaceState(null, "", window.location.pathname);
     }
 
-    let retries = 0;
-    const maxRetries = 5;
-    const checkSession = async () => {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) {
-          // Retry a few times if session is not available yet
-          if (retries < maxRetries) {
-            retries++;
-            setTimeout(checkSession, 500);
-            return;
-          }
-          router.push("/login");
-          return;
-        }
-        setUser(session.user);
-        setAuthChecked(true);
-        // Check real Pro status from database
-        const proStatus = await checkProStatus(session.user.id);
-        setIsPro(proStatus);
-      } catch (error) {
-        console.error("Session check error:", error);
-        if (retries < maxRetries) {
-          retries++;
-          setTimeout(checkSession, 500);
-        } else {
-          router.push("/login");
-        }
+    let mounted = true;
+
+    const checkAuth = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (!mounted) return;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (!session) {
+        router.push("/login");
+        return;
       }
+      setUser(session.user);
+      setAuthChecked(true);
+      const proStatus = await checkProStatus(session.user.id);
+      if (mounted) setIsPro(proStatus);
     };
 
-    checkSession();
-  }, [router]);
+    checkAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      if (event === "SIGNED_IN" && session) {
+        setUser(session.user);
+        setAuthChecked(true);
+        const proStatus = await checkProStatus(session.user.id);
+        if (mounted) setIsPro(proStatus);
+      } else if (event === "SIGNED_OUT") {
+        router.push("/login");
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const isFreeUser = !isPro && !isDemoActive;
   const hasReachedDailyLimit =
