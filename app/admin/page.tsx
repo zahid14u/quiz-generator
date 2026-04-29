@@ -33,16 +33,26 @@ export default function AdminPage() {
   }, []);
 
   const loadData = async () => {
+    // 1. Fetch Profiles
     const { data: profilesData } = await supabase
       .from("profiles")
       .select("*")
       .order("created_at", { ascending: false });
 
-    const { data: reviewsData } = await supabase
+    // 2. Fetch Reviews (with Debugging built-in)
+    const { data: reviewsData, error: reviewsError } = await supabase
       .from("reviews")
       .select("*")
       .order("created_at", { ascending: false });
 
+    // 3. Catch errors in the console
+    if (reviewsError) {
+      console.error("REVIEW ERROR:", reviewsError.message);
+    } else {
+      console.log("REVIEWS FETCHED FROM DB:", reviewsData);
+    }
+
+    // 4. Update Stats and State
     if (profilesData) {
       setUsers(profilesData);
       setStats((prev) => ({
@@ -73,10 +83,30 @@ export default function AdminPage() {
   };
 
   const togglePro = async (userId: string, currentStatus: boolean) => {
-    await supabase
-      .from("profiles")
-      .update({ is_pro: !currentStatus })
-      .eq("id", userId);
+    if (!currentStatus) {
+      // Granting Pro — set expiry 1 year from now
+      const expiryDate = new Date();
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+      await supabase
+        .from("profiles")
+        .update({
+          is_pro: true,
+          plan: "manual",
+          pro_started_at: new Date().toISOString(),
+          pro_expires_at: expiryDate.toISOString(),
+        })
+        .eq("id", userId);
+    } else {
+      // Removing Pro
+      await supabase
+        .from("profiles")
+        .update({
+          is_pro: false,
+          plan: null,
+          pro_expires_at: null,
+        })
+        .eq("id", userId);
+    }
     await loadData();
   };
 
