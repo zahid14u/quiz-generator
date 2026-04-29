@@ -1,5 +1,6 @@
 "use client";
 
+import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabase";
 import jsPDF from "jspdf";
 import Link from "next/link";
@@ -610,7 +611,8 @@ export default function GeneratePage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", position: "relative" }}>
+    <>
+      <Navbar />
       <main className="min-h-screen bg-white text-slate-900">
         {isFreeUser && (
           <div
@@ -1166,21 +1168,15 @@ export default function GeneratePage() {
                 </div>
               )}
 
-              <Link
-                href="/pricing"
-                className="inline-flex w-full items-center justify-center rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
+              <button
+                type="button"
+                onClick={() => setShowUpgradeModal(false)}
+                className="mt-3 w-full text-center text-sm text-slate-500 transition hover:text-slate-700"
               >
-                Upgrade for $5/mo →
-              </Link>
+                Maybe later
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowUpgradeModal(false)}
-              className="mt-3 w-full text-center text-sm text-slate-500 transition hover:text-slate-700"
-            >
-              Maybe later
-            </button>
             <p className="mt-2 text-center text-xs text-slate-400">
               Already have Pro?{" "}
               <Link href="/login" className="text-purple-600 hover:underline">
@@ -1190,6 +1186,6 @@ export default function GeneratePage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
