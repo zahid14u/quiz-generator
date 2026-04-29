@@ -32,6 +32,7 @@ export default function Navbar() {
     { href: "/generate", label: "Generate" },
     { href: "/pricing", label: "Pricing" },
     { href: "/contact", label: "Support" },
+    { href: "/review", label: "Review" },
   ];
 
   const isActive = (href: string) => {

@@ -1,13 +1,26 @@
 "use client";
 import Navbar from "@/components/Navbar";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function PricingPage() {
   const [isYearly, setIsYearly] = useState(false);
   const proPrice = isYearly ? 36 : 5;
   const proPeriod = isYearly ? "/yr" : "/mo";
+  const [approvedReviews, setApprovedReviews] = useState<any[]>([]);
 
+  useEffect(() => {
+    supabase
+      .from("reviews")
+      .select("*")
+      .eq("is_approved", true)
+      .order("created_at", { ascending: false })
+      .limit(6)
+      .then(({ data }) => {
+        if (data && data.length > 0) setApprovedReviews(data);
+      });
+  }, []);
   return (
     <>
       <Navbar />
@@ -235,34 +248,55 @@ export default function PricingPage() {
               What Teachers Say
             </h2>
             <div className="mt-8 grid gap-6 md:grid-cols-3">
-              {[
-                {
-                  quote:
-                    "I used to spend 2 hours making quizzes. Now it takes 10 seconds. QuizAI is a game changer.",
-                  name: "Sarah K.",
-                  role: "High School Teacher",
-                },
-                {
-                  quote:
-                    "The True/False and Fill in the Blanks features are perfect for my IT students.",
-                  name: "Ahmed R.",
-                  role: "College Lecturer",
-                },
-                {
-                  quote:
-                    "My students actually enjoy taking these quizzes. The variety of question types keeps them engaged!",
-                  name: "Maria T.",
-                  role: "Primary Teacher",
-                },
-              ].map((t) => (
-                <div key={t.name} className="rounded-xl bg-slate-50 p-6">
-                  <p className="text-sm text-slate-700 italic">"{t.quote}"</p>
+              {(approvedReviews.length > 0
+                ? approvedReviews
+                : [
+                    {
+                      user_name: "Sarah K.",
+                      comment:
+                        "I used to spend 2 hours making quizzes. Now it takes 10 seconds.",
+                      rating: 5,
+                      role: "High School Teacher",
+                    },
+                    {
+                      user_name: "Ahmed R.",
+                      comment:
+                        "The True/False and Fill in the Blanks features are perfect for my IT students.",
+                      rating: 5,
+                      role: "College Lecturer",
+                    },
+                    {
+                      user_name: "Maria T.",
+                      comment:
+                        "My students actually enjoy taking these quizzes!",
+                      rating: 5,
+                      role: "Primary Teacher",
+                    },
+                  ]
+              ).map((review, index) => (
+                <div key={index} className="rounded-xl bg-slate-50 p-6">
+                  <div className="text-yellow-500 text-sm">
+                    {"⭐".repeat(review.rating)}
+                  </div>
+                  <p className="mt-3 text-sm text-slate-700 italic">
+                    "{review.comment}"
+                  </p>
                   <div className="mt-4">
-                    <p className="font-semibold text-sm">{t.name}</p>
-                    <p className="text-xs text-slate-500">{t.role}</p>
+                    <p className="text-sm font-semibold">{review.user_name}</p>
+                    <p className="text-xs text-slate-500">
+                      {review.role || "Teacher"}
+                    </p>
                   </div>
                 </div>
               ))}
+            </div>
+            <div className="mt-8 text-center">
+              <Link
+                href="/review"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-6 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                ⭐ Leave a Review
+              </Link>
             </div>
           </div>
 

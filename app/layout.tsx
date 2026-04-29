@@ -45,6 +45,9 @@ export default function RootLayout({
                 <Link href="/login" className="hover:text-slate-900">
                   Login
                 </Link>
+                <Link href="/review" className="hover:text-slate-900">
+                  Review
+                </Link>
               </div>
               <p className="text-xs text-slate-500">
                 © 2025 Modern AI Softech. All rights reserved.
