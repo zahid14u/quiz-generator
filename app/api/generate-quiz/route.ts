@@ -1,5 +1,14 @@
+import { createClient } from "@supabase/supabase-js";
 import jwt from "jsonwebtoken";
 import { NextRequest, NextResponse } from "next/server";
+
+// Supabase admin client (service role — bypasses RLS, server-side only)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+
+const FREE_TIER_MAX_QUESTIONS = 10;
 
 const systemPrompt = `You are a quiz generator for teachers. 
 Always respond with valid JSON only, no markdown, no extra text, 
@@ -143,8 +152,13 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.split(" ")[1];
+    let decoded: jwt.JwtPayload;
+
     try {
-      jwt.verify(token, process.env.JWT_SECRET || "");
+      decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || "",
+      ) as jwt.JwtPayload;
     } catch {
       return NextResponse.json(
         { error: "Invalid or expired token" },
@@ -163,6 +177,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Missing required fields: topic, numQuestions, difficulty" },
         { status: 400 },
+      );
+    }
+
+    // Server-side plan check via Supabase
+    const userId = decoded.sub ?? decoded.id ?? decoded.userId;
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Invalid token: missing user ID" },
+        { status: 401 },
+      );
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("is_pro")
+      .eq("id", userId)
+      .single();
+
+    if (profileError || !profile) {
+      console.error("Profile fetch error:", profileError?.message);
+      return NextResponse.json(
+        { error: "Could not verify user plan. Please try again." },
+        { status: 500 },
+      );
+    }
+
+    // Enforce free tier limit — cannot be bypassed by calling API directly
+    if (!profile.is_pro && numQuestions > FREE_TIER_MAX_QUESTIONS) {
+      return NextResponse.json(
+        {
+          error: "FREE_TIER_LIMIT",
+          message: `Free plan is limited to ${FREE_TIER_MAX_QUESTIONS} questions per quiz.`,
+          upgradeRequired: true,
+        },
+        { status: 403 },
       );
     }
 

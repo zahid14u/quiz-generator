@@ -1,8 +1,10 @@
 "use client";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabase";
+import { Filter } from "bad-words";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+const filter = new Filter();
 
 export default function ReviewPage() {
   const [rating, setRating] = useState(0);
@@ -21,12 +23,28 @@ export default function ReviewPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. UNAUTHORIZED ACCESS CHECK
+    // This replaces the "Anonymous" logic. If there is no user, we stop here.
+    if (!user) {
+      setError("You must be logged in to post a review.");
+      return;
+    }
+
     if (rating === 0) {
       setError("Please select a star rating.");
       return;
     }
+
     if (comment.trim().length < 10) {
       setError("Please write at least 10 characters.");
+      return;
+    }
+
+    // 2. AUTOMATED CONTENT FILTERING
+    // This checks the 'comment' variable for abusive words before proceeding
+    if (filter.isProfane(comment)) {
+      setError("Please avoid using inappropriate or abusive language.");
       return;
     }
 
@@ -35,20 +53,22 @@ export default function ReviewPage() {
 
     try {
       const { error } = await supabase.from("reviews").insert({
-        user_id: user?.id || null,
-        user_name:
-          user?.user_metadata?.full_name ||
-          user?.email?.split("@")[0] ||
-          "Anonymous",
-        user_email: user?.email || "anonymous",
+        // We use user.id directly because we already checked that user exists above
+        user_id: user.id,
+        user_name: user.user_metadata?.full_name || user.email?.split("@")[0],
+        user_email: user.email,
         rating,
         comment: comment.trim(),
       });
 
-      if (error) throw error;
+      if (error) {
+        // If your SQL trigger blocks the user for spamming, this will show that message
+        throw new Error(error.message);
+      }
+
       setSubmitted(true);
     } catch (err: any) {
-      setError("Failed to submit review. Please try again.");
+      setError(err.message || "Failed to submit review. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -94,29 +114,47 @@ export default function ReviewPage() {
                 <label className="mb-3 block text-sm font-medium text-slate-700">
                   Your Rating
                 </label>
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setRating(star)}
-                      onMouseEnter={() => setHoveredRating(star)}
-                      onMouseLeave={() => setHoveredRating(0)}
-                      className="text-4xl transition-transform hover:scale-110"
-                    >
-                      {star <= (hoveredRating || rating) ? "⭐" : "☆"}
-                    </button>
-                  ))}
+                <div className="flex flex-col items-start isolate">
+                  {/* pr-12 pushes the 5th star away from the right edge where extensions live */}
+                  <div className="flex items-center gap-1 py-2 pr-12">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <div
+                        key={star}
+                        className="relative h-12 w-12 flex items-center justify-center"
+                      >
+                        {/* The div above has a fixed width/height so the star growing doesn't move the box */}
+                        <button
+                          type="button"
+                          onClick={() => setRating(star)}
+                          onMouseEnter={() => setHoveredRating(star)}
+                          onMouseLeave={() => setHoveredRating(0)}
+                          // z-[100] keeps it above extensions
+                          // 'absolute' inside a fixed-size div prevents the layout from shifting
+                          className="absolute z-[100] text-4xl transition-transform duration-200 hover:scale-125 p-1 active:scale-95"
+                        >
+                          <span className="pointer-events-none select-none">
+                            {star <= (hoveredRating || rating) ? "⭐" : "☆"}
+                          </span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Rating Label stays in a fixed position */}
+                  <div className="h-6">
+                    {" "}
+                    {/* Fixed height wrapper prevents the box from jumping when text appears */}
+                    {(hoveredRating || rating) > 0 && (
+                      <p className="mt-1 text-sm font-medium text-slate-500">
+                        {(hoveredRating || rating) === 1 && "Poor"}
+                        {(hoveredRating || rating) === 2 && "Fair"}
+                        {(hoveredRating || rating) === 3 && "Good"}
+                        {(hoveredRating || rating) === 4 && "Very Good"}
+                        {(hoveredRating || rating) === 5 && "Excellent!"}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                {rating > 0 && (
-                  <p className="mt-2 text-sm text-slate-500">
-                    {rating === 1 && "Poor"}
-                    {rating === 2 && "Fair"}
-                    {rating === 3 && "Good"}
-                    {rating === 4 && "Very Good"}
-                    {rating === 5 && "Excellent!"}
-                  </p>
-                )}
               </div>
 
               <div>
@@ -135,16 +173,6 @@ export default function ReviewPage() {
                   {comment.length} characters
                 </p>
               </div>
-
-              {!user && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  You are not logged in. Your review will be submitted
-                  anonymously.{" "}
-                  <Link href="/login" className="font-medium underline">
-                    Login for a verified review
-                  </Link>
-                </div>
-              )}
 
               <button
                 type="submit"

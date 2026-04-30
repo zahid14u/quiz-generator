@@ -297,7 +297,10 @@ export default function GeneratePage() {
       });
 
       const data = await response.json();
-
+      if (data.upgradeRequired) {
+        setShowUpgradeModal(true);
+        return;
+      }
       if (data.error) {
         throw new Error(data.error);
       }
@@ -1227,6 +1230,12 @@ export default function GeneratePage() {
                   <p className="mt-1 text-xs text-amber-600">
                     Upgrade to Pro to keep all features.
                   </p>
+                  <Link
+                    href="/pricing"
+                    className="inline-flex w-full items-center justify-center rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
+                  >
+                    Upgrade to Pro — $5/mo →
+                  </Link>
                 </div>
               )}
 
