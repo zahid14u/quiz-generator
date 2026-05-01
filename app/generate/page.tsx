@@ -250,7 +250,16 @@ export default function GeneratePage() {
 
   async function getToken(): Promise<string> {
     try {
-      const res = await fetch("/api/auth/token");
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) return "";
+
+      const res = await fetch("/api/auth/token", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
       const data = await res.json();
       return data.token || "";
     } catch {
