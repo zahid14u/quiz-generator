@@ -1,29 +1,20 @@
+// 📁 SAVE AS: src/app/pricing/page.tsx
+
 "use client";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-// ─── REPLACE THESE WITH YOUR ACTUAL LEMON SQUEEZY URLS ───────────────────────
-// 1. Go to https://app.lemonsqueezy.com
-// 2. Create a product called "QuizAI Pro"
-// 3. Add two variants: Monthly ($5) and Yearly ($36)
-// 4. Copy the checkout URLs and paste them below
-const LEMON_SQUEEZY_MONTHLY_URL = "https://quizai.lemonsqueezy.com/checkout/buy/YOUR_MONTHLY_VARIANT_ID";
-const LEMON_SQUEEZY_YEARLY_URL  = "https://quizai.lemonsqueezy.com/checkout/buy/YOUR_YEARLY_VARIANT_ID";
-// ─────────────────────────────────────────────────────────────────────────────
-
 export default function PricingPage() {
   const [isYearly, setIsYearly] = useState(false);
-  const proPrice  = isYearly ? 36 : 5;
+  const proPrice = isYearly ? 36 : 5;
   const proPeriod = isYearly ? "/yr" : "/mo";
-  const checkoutUrl = isYearly ? LEMON_SQUEEZY_YEARLY_URL : LEMON_SQUEEZY_MONTHLY_URL;
-
   const [approvedReviews, setApprovedReviews] = useState<any[]>([]);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isLoadingCheckout, setIsLoadingCheckout] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
 
   useEffect(() => {
-    // Fetch approved reviews
     supabase
       .from("reviews")
       .select("*")
@@ -33,22 +24,61 @@ export default function PricingPage() {
       .then(({ data }) => {
         if (data && data.length > 0) setApprovedReviews(data);
       });
-
-    // Get logged-in user email to pre-fill Lemon Squeezy checkout
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.email) setUserEmail(session.user.email);
-    });
   }, []);
 
-  // Append email to checkout URL so Lemon Squeezy can pre-fill it
-  const getCheckoutUrl = () => {
-    if (!checkoutUrl.includes("YOUR_")) {
-      return userEmail
-        ? `${checkoutUrl}?checkout[email]=${encodeURIComponent(userEmail)}`
-        : checkoutUrl;
+  const handleUpgrade = async () => {
+    setCheckoutError("");
+    setIsLoadingCheckout(true);
+
+    try {
+      // 1. Get current session
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        // Not logged in — send to signup first
+        window.location.href = "/signup?next=pricing";
+        return;
+      }
+
+      // 2. Pick the correct variant ID based on monthly/yearly toggle
+      const variantId = isYearly
+        ? process.env.NEXT_PUBLIC_LS_YEARLY_VARIANT_ID
+        : process.env.NEXT_PUBLIC_LS_MONTHLY_VARIANT_ID;
+
+      if (!variantId) {
+        setCheckoutError("Checkout not configured. Please contact support.");
+        return;
+      }
+
+      // 3. Call our checkout API to get a Lemon Squeezy checkout URL
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          variantId,
+          userEmail: session.user.email,
+          userId: session.user.id,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        setCheckoutError(
+          data.error || "Failed to start checkout. Please try again.",
+        );
+        return;
+      }
+
+      // 4. Redirect to Lemon Squeezy checkout
+      window.location.href = data.url;
+    } catch (err) {
+      setCheckoutError("Something went wrong. Please try again.");
+    } finally {
+      setIsLoadingCheckout(false);
     }
-    // Placeholder not replaced yet — send to contact page with notice
-    return "/contact";
   };
 
   return (
@@ -66,22 +96,18 @@ export default function PricingPage() {
             </p>
           </div>
 
-          {/* Billing toggle */}
+          {/* Monthly / Yearly toggle */}
           <div className="mt-12 flex items-center justify-center">
             <div className="flex items-center gap-4 rounded-lg bg-slate-100 p-1">
               <button
                 onClick={() => setIsYearly(false)}
-                className={`rounded-md px-4 py-2 text-sm font-medium transition ${
-                  !isYearly ? "bg-white text-slate-900 shadow" : "text-slate-600"
-                }`}
+                className={`rounded-md px-4 py-2 text-sm font-medium transition ${!isYearly ? "bg-white text-slate-900 shadow" : "text-slate-600"}`}
               >
                 Monthly
               </button>
               <button
                 onClick={() => setIsYearly(true)}
-                className={`relative rounded-md px-4 py-2 text-sm font-medium transition ${
-                  isYearly ? "bg-white text-slate-900 shadow" : "text-slate-600"
-                }`}
+                className={`relative rounded-md px-4 py-2 text-sm font-medium transition ${isYearly ? "bg-white text-slate-900 shadow" : "text-slate-600"}`}
               >
                 Yearly
                 {isYearly && (
@@ -93,9 +119,9 @@ export default function PricingPage() {
             </div>
           </div>
 
-          {/* Plan cards */}
+          {/* Plans */}
           <div className="mt-8 grid gap-8 md:grid-cols-2">
-            {/* Free */}
+            {/* Free plan */}
             <div className="rounded-2xl border border-slate-200 p-8">
               <h2 className="text-xl font-bold">Free</h2>
               <div className="mt-2 flex items-baseline gap-1">
@@ -107,13 +133,12 @@ export default function PricingPage() {
                   <span className="text-green-600 font-bold">✓</span>MCQ only
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="text-green-600 font-bold">✓</span>Up to 10 questions
+                  <span className="text-green-600 font-bold">✓</span>10
+                  questions max
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="text-green-600 font-bold">✓</span>3 quizzes per day
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-green-600 font-bold">✓</span>PDF & Kahoot export
+                  <span className="text-green-600 font-bold">✓</span>3 quizzes
+                  per day
                 </li>
               </ul>
               <Link
@@ -124,56 +149,65 @@ export default function PricingPage() {
               </Link>
             </div>
 
-            {/* Pro */}
+            {/* Pro plan */}
             <div className="relative rounded-2xl border-2 border-purple-500 bg-purple-50 p-8">
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-purple-600 px-4 py-1 text-xs font-bold text-white">
                 Most Popular
               </span>
               <h2 className="text-xl font-bold">Pro</h2>
-              <div className="mt-2 flex items-baseline gap-2 flex-wrap">
+              <div className="mt-2 flex items-baseline gap-1 flex-wrap">
                 <span className="text-4xl font-bold text-purple-700">
                   ${proPrice}
                 </span>
                 <span className="text-slate-500">{proPeriod}</span>
                 {isYearly && (
                   <>
-                    <span className="text-sm text-slate-400 line-through">$60</span>
-                    <span className="text-sm text-green-600 font-semibold">Save $24</span>
+                    <span className="ml-2 text-sm text-slate-400 line-through">
+                      $60
+                    </span>
+                    <span className="ml-2 text-sm text-green-600 font-semibold">
+                      Save $24
+                    </span>
+                    <div className="w-full text-sm text-slate-500">
+                      just $3/mo
+                    </div>
                   </>
                 )}
               </div>
-              {isYearly && (
-                <p className="mt-1 text-xs text-slate-500">
-                  Billed as $36/year — just $3/month
-                </p>
-              )}
               <ul className="mt-6 space-y-3 text-sm">
                 <li className="flex items-center gap-2">
-                  <span className="text-purple-600 font-bold">✓</span>All question types (MCQ, True/False, Fill in Blanks, Short Answer)
+                  <span className="text-purple-600 font-bold">✓</span>All
+                  question types (MCQ, True/False, Fill in Blanks, Short Answer)
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="text-purple-600 font-bold">✓</span>Up to 30 questions per quiz
+                  <span className="text-purple-600 font-bold">✓</span>Up to 30
+                  questions per quiz
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="text-purple-600 font-bold">✓</span>Unlimited quizzes every day
+                  <span className="text-purple-600 font-bold">✓</span>Unlimited
+                  quizzes daily
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="text-purple-600 font-bold">✓</span>PDF & Kahoot export
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-purple-600 font-bold">✓</span>Priority support
+                  <span className="text-purple-600 font-bold">✓</span>Priority
+                  support
                 </li>
               </ul>
 
-              {/* ✅ FIXED: Now links to actual Lemon Squeezy checkout */}
-              <a
-                href={getCheckoutUrl()}
-                target={checkoutUrl.includes("lemonsqueezy") ? "_blank" : undefined}
-                rel="noopener noreferrer"
-                className="mt-8 block w-full rounded-lg bg-purple-600 px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-purple-700"
+              {checkoutError && (
+                <p className="mt-4 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                  {checkoutError}
+                </p>
+              )}
+
+              <button
+                onClick={handleUpgrade}
+                disabled={isLoadingCheckout}
+                className="mt-8 block w-full rounded-lg bg-purple-600 px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed"
               >
-                Upgrade to Pro →
-              </a>
+                {isLoadingCheckout
+                  ? "Preparing checkout..."
+                  : `Upgrade to Pro — $${proPrice}${proPeriod}`}
+              </button>
               <p className="mt-2 text-center text-xs text-slate-500">
                 Cancel anytime · Secure payment via Lemon Squeezy
               </p>
@@ -186,26 +220,27 @@ export default function PricingPage() {
             </div>
           </div>
 
-          {/* Money-back guarantee */}
+          {/* Money back guarantee */}
           <div className="mt-12 rounded-lg bg-green-50 border border-green-200 p-6 text-center">
             <div className="flex items-center justify-center gap-2 text-green-700">
               <span className="text-2xl">🛡️</span>
               <span className="font-semibold">7-day money back guarantee</span>
             </div>
             <p className="mt-2 text-sm text-green-600">
-              Not satisfied? Get a full refund within 7 days — no questions asked.
-              Email <a href="mailto:zahid.14u@gmail.com" className="underline">zahid.14u@gmail.com</a> with your order number.
+              Not satisfied? Get a full refund within 7 days, no questions
+              asked.
             </p>
           </div>
 
-          {/* Pro feature showcase */}
+          {/* Pro preview */}
           <div className="mt-20">
-            <h2 className="text-center text-2xl font-bold">See Pro in Action</h2>
+            <h2 className="text-center text-2xl font-bold">
+              See Pro in Action
+            </h2>
             <p className="mt-2 text-center text-slate-600">
-              Experience all question types before you upgrade
+              Experience the question types before you upgrade
             </p>
             <div className="mt-8 grid gap-6 md:grid-cols-3">
-              {/* True/False demo */}
               <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
                 <span className="inline-block rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
                   True / False
@@ -229,13 +264,13 @@ export default function PricingPage() {
                 </p>
               </div>
 
-              {/* Fill in Blanks demo */}
               <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
                 <span className="inline-block rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700">
                   Fill in the Blanks
                 </span>
                 <p className="mt-3 font-semibold text-slate-800">
-                  The <span className="font-bold text-purple-700">_______</span>{" "}
+                  The{" "}
+                  <span className="font-bold text-purple-700">_______</span>{" "}
                   protocol sends email.
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
@@ -256,7 +291,6 @@ export default function PricingPage() {
                 </p>
               </div>
 
-              {/* Short answer demo */}
               <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
                 <span className="inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
                   Short Answer
@@ -279,9 +313,9 @@ export default function PricingPage() {
               </div>
             </div>
 
-            <div className="mt-10 text-center">
+            <div className="mt-8 text-center">
               <p className="text-sm text-slate-600 mb-4">
-                Ready to try these features yourself?
+                Want to try before you buy?
               </p>
               <Link
                 href="/generate"
@@ -297,26 +331,31 @@ export default function PricingPage() {
 
           {/* Reviews */}
           <div className="mt-20">
-            <h2 className="text-center text-2xl font-bold">What Teachers Say</h2>
+            <h2 className="text-center text-2xl font-bold">
+              What Teachers Say
+            </h2>
             <div className="mt-8 grid gap-6 md:grid-cols-3">
               {(approvedReviews.length > 0
                 ? approvedReviews
                 : [
                     {
                       user_name: "Sarah K.",
-                      comment: "I used to spend 2 hours making quizzes. Now it takes 10 seconds.",
+                      comment:
+                        "I used to spend 2 hours making quizzes. Now it takes 10 seconds.",
                       rating: 5,
                       role: "High School Teacher",
                     },
                     {
                       user_name: "Ahmed R.",
-                      comment: "The True/False and Fill in the Blanks features are perfect for my IT students.",
+                      comment:
+                        "The True/False and Fill in the Blanks features are perfect for my IT students.",
                       rating: 5,
                       role: "College Lecturer",
                     },
                     {
                       user_name: "Maria T.",
-                      comment: "My students actually enjoy taking these quizzes!",
+                      comment:
+                        "My students actually enjoy taking these quizzes!",
                       rating: 5,
                       role: "Primary Teacher",
                     },
@@ -327,11 +366,13 @@ export default function PricingPage() {
                     {"⭐".repeat(review.rating)}
                   </div>
                   <p className="mt-3 text-sm text-slate-700 italic">
-                    &ldquo;{review.comment}&rdquo;
+                    "{review.comment}"
                   </p>
                   <div className="mt-4">
                     <p className="text-sm font-semibold">{review.user_name}</p>
-                    <p className="text-xs text-slate-500">{review.role || "Teacher"}</p>
+                    <p className="text-xs text-slate-500">
+                      {review.role || "Teacher"}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -355,30 +396,33 @@ export default function PricingPage() {
               {[
                 {
                   q: "Can I cancel anytime?",
-                  a: "Yes, cancel with one click from your Lemon Squeezy account. No questions asked, no cancellation fees.",
+                  a: "Yes, cancel with one click from your Lemon Squeezy account. No questions asked.",
                 },
                 {
-                  q: "What payment methods do you accept?",
-                  a: "All major credit/debit cards (Visa, Mastercard, Amex) and PayPal accepted via Lemon Squeezy.",
+                  q: "What payment methods?",
+                  a: "All major cards accepted via Lemon Squeezy.",
                 },
                 {
                   q: "Is my data safe?",
-                  a: "Yes, we never store your quiz content on our servers. Payment data is handled entirely by Lemon Squeezy.",
+                  a: "Yes, we never store your quiz content on our servers.",
                 },
                 {
-                  q: "Can I try Pro for free?",
+                  q: "Can I try Pro free?",
                   a: "Yes! Use our free demo on the generate page to try all Pro features before paying.",
                 },
                 {
                   q: "What is the refund policy?",
-                  a: "We offer a full refund within 7 days of first purchase. Email zahid.14u@gmail.com with your order number.",
+                  a: "We offer a 7-day money back guarantee. If you're not satisfied, contact support for a full refund.",
                 },
                 {
-                  q: "How do I get Pro access after payment?",
-                  a: "After payment, email us your order number at zahid.14u@gmail.com and we will activate Pro on your account within a few hours.",
+                  q: "How do I cancel my subscription?",
+                  a: "Log into your Lemon Squeezy account and click Cancel. Your access continues until end of the billing period.",
                 },
               ].map((f) => (
-                <div key={f.q} className="rounded-xl border border-slate-200 p-6">
+                <div
+                  key={f.q}
+                  className="rounded-xl border border-slate-200 p-6"
+                >
                   <h3 className="font-semibold">{f.q}</h3>
                   <p className="mt-2 text-sm text-slate-600">{f.a}</p>
                 </div>
@@ -392,16 +436,16 @@ export default function PricingPage() {
               Ready to Transform Your Teaching?
             </h2>
             <p className="mt-4 text-slate-300">
-              Join thousands of teachers using QuizAI to create engaging quizzes in seconds.
+              Join thousands of teachers using QuizAI to create engaging quizzes
+              in seconds.
             </p>
-            <a
-              href={getCheckoutUrl()}
-              target={checkoutUrl.includes("lemonsqueezy") ? "_blank" : undefined}
-              rel="noopener noreferrer"
-              className="mt-8 inline-flex items-center gap-2 rounded-lg bg-purple-600 px-8 py-3 text-lg font-semibold text-white transition hover:bg-purple-700"
+            <button
+              onClick={handleUpgrade}
+              disabled={isLoadingCheckout}
+              className="mt-8 inline-flex items-center gap-2 rounded-lg bg-purple-600 px-8 py-3 text-lg font-semibold text-white transition hover:bg-purple-700 disabled:bg-purple-400"
             >
-              Upgrade to Pro — ${proPrice}{proPeriod} →
-            </a>
+              {isLoadingCheckout ? "Preparing..." : "Start Pro Today →"}
+            </button>
           </div>
         </div>
       </main>
