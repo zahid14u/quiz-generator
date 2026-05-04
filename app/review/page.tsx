@@ -4,45 +4,41 @@ import { supabase } from "@/lib/supabase";
 import { Filter } from "bad-words";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+
 const filter = new Filter();
 
 export default function ReviewPage() {
-  const [rating, setRating] = useState(0);
+  const [rating, setRating]               = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
-  const [comment, setComment] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState("");
-  const [user, setUser] = useState<any>(null);
+  const [comment, setComment]             = useState("");
+  const [isLoading, setIsLoading]         = useState(false);
+  const [submitted, setSubmitted]         = useState(false);
+  const [error, setError]                 = useState("");
+  const [user, setUser]                   = useState<any>(null);
+  const [authLoading, setAuthLoading]     = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) setUser(session.user);
+      setAuthLoading(false);
     });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 1. UNAUTHORIZED ACCESS CHECK
-    // This replaces the "Anonymous" logic. If there is no user, we stop here.
     if (!user) {
       setError("You must be logged in to post a review.");
       return;
     }
-
     if (rating === 0) {
       setError("Please select a star rating.");
       return;
     }
-
     if (comment.trim().length < 10) {
       setError("Please write at least 10 characters.");
       return;
     }
-
-    // 2. AUTOMATED CONTENT FILTERING
-    // This checks the 'comment' variable for abusive words before proceeding
     if (filter.isProfane(comment)) {
       setError("Please avoid using inappropriate or abusive language.");
       return;
@@ -52,20 +48,15 @@ export default function ReviewPage() {
     setError("");
 
     try {
-      const { error } = await supabase.from("reviews").insert({
-        // We use user.id directly because we already checked that user exists above
-        user_id: user.id,
-        user_name: user.user_metadata?.full_name || user.email?.split("@")[0],
+      const { error: dbError } = await supabase.from("reviews").insert({
+        user_id:    user.id,
+        user_name:  user.user_metadata?.full_name || user.email?.split("@")[0],
         user_email: user.email,
         rating,
         comment: comment.trim(),
       });
 
-      if (error) {
-        // If your SQL trigger blocks the user for spamming, this will show that message
-        throw new Error(error.message);
-      }
-
+      if (dbError) throw new Error(dbError.message);
       setSubmitted(true);
     } catch (err: any) {
       setError(err.message || "Failed to submit review. Please try again.");
@@ -102,6 +93,39 @@ export default function ReviewPage() {
                 Back to Quiz Generator
               </Link>
             </div>
+
+          ) : authLoading ? (
+            /* Loading state while we check auth */
+            <div className="flex justify-center py-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-purple-600 border-t-transparent" />
+            </div>
+
+          ) : !user ? (
+            /* ✅ FIXED: Show a clear login prompt instead of a confusing error */
+            <div className="text-center">
+              <div className="text-4xl mb-4">🔒</div>
+              <h2 className="text-lg font-semibold text-slate-800">
+                Sign in to Leave a Review
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                You need a free account to post a review.
+              </p>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <Link
+                  href={`/login?next=${encodeURIComponent("/review")}`}
+                  className="rounded-lg bg-purple-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href={`/signup?next=${encodeURIComponent("/review")}`}
+                  className="rounded-lg border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Create Free Account
+                </Link>
+              </div>
+            </div>
+
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               {error && (
@@ -115,22 +139,19 @@ export default function ReviewPage() {
                   Your Rating
                 </label>
                 <div className="flex flex-col items-start isolate">
-                  {/* pr-12 pushes the 5th star away from the right edge where extensions live */}
                   <div className="flex items-center gap-1 py-2 pr-12">
                     {[1, 2, 3, 4, 5].map((star) => (
                       <div
                         key={star}
                         className="relative h-12 w-12 flex items-center justify-center"
                       >
-                        {/* The div above has a fixed width/height so the star growing doesn't move the box */}
                         <button
                           type="button"
                           onClick={() => setRating(star)}
                           onMouseEnter={() => setHoveredRating(star)}
                           onMouseLeave={() => setHoveredRating(0)}
-                          // z-[100] keeps it above extensions
-                          // 'absolute' inside a fixed-size div prevents the layout from shifting
                           className="absolute z-[100] text-4xl transition-transform duration-200 hover:scale-125 p-1 active:scale-95"
+                          aria-label={`Rate ${star} out of 5`}
                         >
                           <span className="pointer-events-none select-none">
                             {star <= (hoveredRating || rating) ? "⭐" : "☆"}
@@ -139,11 +160,7 @@ export default function ReviewPage() {
                       </div>
                     ))}
                   </div>
-
-                  {/* Rating Label stays in a fixed position */}
                   <div className="h-6">
-                    {" "}
-                    {/* Fixed height wrapper prevents the box from jumping when text appears */}
                     {(hoveredRating || rating) > 0 && (
                       <p className="mt-1 text-sm font-medium text-slate-500">
                         {(hoveredRating || rating) === 1 && "Poor"}
@@ -169,15 +186,20 @@ export default function ReviewPage() {
                   placeholder="Tell other teachers how QuizAI has helped you..."
                   className="w-full rounded-md border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
                 />
-                <p className="mt-1 text-xs text-slate-400">
-                  {comment.length} characters
+                <p className={`mt-1 text-xs ${comment.length < 10 && comment.length > 0 ? "text-red-400" : "text-slate-400"}`}>
+                  {comment.length} characters{comment.length < 10 && comment.length > 0 ? ` (${10 - comment.length} more needed)` : ""}
                 </p>
+              </div>
+
+              {/* Show who is submitting */}
+              <div className="rounded-md bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                Submitting as <span className="font-semibold">{user.email}</span>
               </div>
 
               <button
                 type="submit"
-                disabled={isLoading}
-                className="w-full rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:bg-purple-300"
+                disabled={isLoading || rating === 0 || comment.trim().length < 10}
+                className="w-full rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed"
               >
                 {isLoading ? "Submitting..." : "Submit Review"}
               </button>
