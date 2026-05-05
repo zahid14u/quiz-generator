@@ -16,7 +16,7 @@ export default function LoginPage() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        router.push("/generate");
+        router.push("/dashboard");
       }
     });
 
@@ -24,7 +24,7 @@ export default function LoginPage() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session) {
-        router.push("/generate");
+        router.push("/dashboard");
       }
     });
 
