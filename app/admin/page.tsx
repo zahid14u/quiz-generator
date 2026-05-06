@@ -4,8 +4,29 @@
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+// Add these interfaces at the top of your file
+export interface Profile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  is_pro: boolean;
+  plan: string | null;
+  created_at: string;
+  pro_started_at: string | null;
+  pro_expires_at: string | null;
+}
 
-const ADMIN_EMAIL = "zahid.14u@gmail.com";
+export interface Review {
+  id: string;
+  user_name: string;
+  user_email: string;
+  rating: number;
+  comment: string;
+  is_approved: boolean;
+  is_featured: boolean;
+  created_at: string;
+}
+const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
 
 export default function AdminPage() {
   const router = useRouter();
@@ -15,8 +36,8 @@ export default function AdminPage() {
   const [reviewFilter, setReviewFilter] = useState<
     "all" | "pending" | "approved" | "featured"
   >("all");
-  const [users, setUsers] = useState<any[]>([]);
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [users, setUsers] = useState<Profile[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -45,41 +66,63 @@ export default function AdminPage() {
   }, []);
 
   const loadData = async () => {
-    const { data: profilesData } = await supabase
-      .from("profiles")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      // --- 1. PROFILES DATA ---
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    if (profilesData) {
-      setUsers(profilesData);
-      setStats((prev) => ({
-        ...prev,
-        totalUsers: profilesData.length,
-        proUsers: profilesData.filter((u: any) => u.is_pro).length,
-        freeUsers: profilesData.filter((u: any) => !u.is_pro).length,
-      }));
-    }
+      if (profilesError) throw profilesError;
 
-    // Fetch reviews (RLS usually allows admin to read all if policy set)
-    const { data: reviewsData } = await supabase
-      .from("reviews")
-      .select("*")
-      .order("created_at", { ascending: false });
+      if (profilesData) {
+        // Cast the data so TypeScript knows exactly what properties exist
+        const typedProfiles = profilesData as Profile[];
 
-    if (reviewsData) {
-      setReviews(reviewsData);
-      const approved = reviewsData.filter((r) => r.is_approved);
-      const avg = approved.length
-        ? approved.reduce((s, r) => s + (r.rating || 0), 0) / approved.length
-        : 0;
-      setStats((prev) => ({
-        ...prev,
-        totalReviews: reviewsData.length,
-        pendingReviews: reviewsData.filter((r) => !r.is_approved).length,
-        approvedReviews: approved.length,
-        featuredReviews: reviewsData.filter((r) => r.is_featured).length,
-        avgRating: Math.round(avg * 10) / 10,
-      }));
+        setUsers(typedProfiles);
+        setStats((prev) => ({
+          ...prev,
+          totalUsers: typedProfiles.length,
+          // Look! No more (u: any). TypeScript knows 'u' is a Profile!
+          proUsers: typedProfiles.filter((u) => u.is_pro).length,
+          freeUsers: typedProfiles.filter((u) => !u.is_pro).length,
+        }));
+      }
+
+      // --- 2. REVIEWS DATA ---
+      const { data: reviewsData, error: reviewsError } = await supabase
+        .from("reviews")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (reviewsError) throw reviewsError;
+
+      if (reviewsData) {
+        // Cast the reviews data
+        const typedReviews = reviewsData as Review[];
+
+        setReviews(typedReviews);
+
+        // No more (r: any) needed here either
+        const approved = typedReviews.filter((r) => r.is_approved);
+        const avg = approved.length
+          ? approved.reduce((s, r) => s + (r.rating || 0), 0) / approved.length
+          : 0;
+
+        setStats((prev) => ({
+          ...prev,
+          totalReviews: typedReviews.length,
+          pendingReviews: typedReviews.filter((r) => !r.is_approved).length,
+          approvedReviews: approved.length,
+          featuredReviews: typedReviews.filter((r) => r.is_featured).length,
+          avgRating: Math.round(avg * 10) / 10,
+        }));
+      }
+    } catch (error: any) {
+      console.error("Failed to load admin data:", error);
+      alert(
+        "Error loading dashboard data. Please check your connection and refresh.",
+      );
     }
   };
 
