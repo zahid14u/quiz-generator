@@ -1,6 +1,7 @@
 "use client";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabase";
+import { useDeviceTracking } from "@/lib/useDeviceTracking";
 import jsPDF from "jspdf";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -134,6 +135,8 @@ export default function GeneratePage() {
   const [isPro, setIsPro] = useState(false);
   const [isDemoActive, setIsDemoActive] = useState(false);
   const [demoQuizUsed, setDemoQuizUsed] = useState(false);
+  const [userId, setUserId] = useState<string | undefined>(undefined);
+  useDeviceTracking(userId);
 
   useEffect(() => {
     // Clean URL hash after OAuth redirect
@@ -158,6 +161,7 @@ export default function GeneratePage() {
       setAuthChecked(true);
       const proStatus = await checkProStatus(session.user.id);
       if (mounted) setIsPro(proStatus);
+      if (mounted) setUserId(session.user.id);
     };
 
     checkAuth();

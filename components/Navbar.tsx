@@ -1,4 +1,4 @@
-// 📁 SAVE AS: src/components/Navbar.tsx
+// 📁 SAVE AS: components/Navbar.tsx
 
 "use client";
 
@@ -12,6 +12,8 @@ export default function Navbar() {
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -31,9 +33,16 @@ export default function Navbar() {
   }, [pathname]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    setIsLoggingOut(true);
     setMenuOpen(false);
-    router.push("/");
+    await supabase.auth.signOut();
+    // Show toast
+    setShowToast(true);
+    setTimeout(() => {
+      setShowToast(false);
+      router.push("/");
+    }, 2000);
+    setIsLoggingOut(false);
   };
 
   const navLinks = [
@@ -51,6 +60,24 @@ export default function Navbar() {
 
   return (
     <>
+      {/* ── Logout Toast ── */}
+      <div
+        className={`fixed top-5 left-1/2 -translate-x-1/2 z-[100] transition-all duration-500 ${
+          showToast
+            ? "opacity-100 translate-y-0 pointer-events-auto"
+            : "opacity-0 -translate-y-4 pointer-events-none"
+        }`}
+      >
+        <div className="flex items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl border border-white/10">
+          <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+            <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium">Logged out successfully</p>
+        </div>
+      </div>
+
       <nav className="w-full bg-slate-900 text-white relative z-40">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
 
@@ -59,7 +86,7 @@ export default function Navbar() {
             QuizAI
           </Link>
 
-          {/* Desktop nav — visible md and up */}
+          {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-2">
             {navLinks.map((link) => (
               <Link
@@ -95,9 +122,10 @@ export default function Navbar() {
                 </span>
                 <button
                   onClick={handleLogout}
-                  className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-red-600"
+                  disabled={isLoggingOut}
+                  className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium transition hover:bg-red-600 disabled:opacity-60"
                 >
-                  Logout
+                  {isLoggingOut ? "Logging out..." : "Logout"}
                 </button>
               </div>
             ) : (
@@ -122,7 +150,7 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Mobile right side — avatar + hamburger */}
+          {/* Mobile right side */}
           <div className="flex md:hidden items-center gap-3">
             {session && (
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-600 text-sm font-bold flex-shrink-0">
@@ -143,7 +171,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Mobile dropdown menu */}
+      {/* Mobile dropdown */}
       <div
         className={`md:hidden fixed left-0 right-0 z-30 bg-slate-900 text-white shadow-2xl transition-all duration-300 ease-in-out overflow-hidden ${
           menuOpen ? "max-h-screen opacity-100" : "max-h-0 opacity-0 pointer-events-none"
@@ -151,7 +179,6 @@ export default function Navbar() {
         style={{ top: "64px" }}
       >
         <div className="px-4 py-3 space-y-1 border-t border-white/10">
-
           {navLinks.map((link) => (
             <Link
               key={link.href}
@@ -189,12 +216,13 @@ export default function Navbar() {
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium text-red-400 hover:bg-red-600 hover:text-white transition"
+                  disabled={isLoggingOut}
+                  className="w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium text-red-400 hover:bg-red-600 hover:text-white transition disabled:opacity-60"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
-                  Logout
+                  {isLoggingOut ? "Logging out..." : "Logout"}
                 </button>
               </>
             ) : (
@@ -216,11 +244,10 @@ export default function Navbar() {
               </>
             )}
           </div>
-
         </div>
       </div>
 
-      {/* Backdrop — tap anywhere outside to close */}
+      {/* Backdrop */}
       {menuOpen && (
         <div
           className="md:hidden fixed inset-0 z-20 bg-black/40"
