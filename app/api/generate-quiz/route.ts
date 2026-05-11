@@ -1,8 +1,11 @@
+// 📁 SAVE AS: app/api/generate/route.ts (or src/app/api/generate/route.ts)
+
+import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import jwt from "jsonwebtoken";
+import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-// Supabase admin client (service role — bypasses RLS, server-side only)
+// Supabase admin client (service role — bypasses RLS, server-side only for database checks)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -145,26 +148,35 @@ function parseQuestions(rawContent: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    // JWT verification
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // ── NEW: Secure Supabase SSR Authentication ──
+    const cookieStore = await cookies();
+    const supabaseServer = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+        },
+      },
+    );
 
-    const token = authHeader.split(" ")[1];
-    let decoded: jwt.JwtPayload;
+    // Get user securely from the server session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseServer.auth.getUser();
 
-    try {
-      decoded = jwt.verify(
-        token,
-        process.env.JWT_SECRET || "",
-      ) as jwt.JwtPayload;
-    } catch {
+    if (authError || !user) {
       return NextResponse.json(
-        { error: "Invalid or expired token" },
+        { error: "Unauthorized API access. Please log in." },
         { status: 401 },
       );
     }
+
+    const userId = user.id;
+    // ─────────────────────────────────────────────
 
     const {
       topic,
@@ -181,15 +193,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Server-side plan check via Supabase
-    const userId = decoded.sub ?? decoded.id ?? decoded.userId;
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid token: missing user ID" },
-        { status: 401 },
-      );
-    }
-
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("is_pro")

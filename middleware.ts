@@ -61,6 +61,18 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // ── NEW: Protect API Routes from direct attacks ──
+  if (pathname.startsWith("/api/generate") || pathname.startsWith("/api/pro")) {
+    if (!user) {
+      // Don't redirect API calls, return a strict 401 Unauthorized
+      return NextResponse.json(
+        { error: "Unauthorized API access. Please log in." },
+        { status: 401 },
+      );
+    }
+    return response;
+  }
+
   // ── Redirect already logged-in users away from /login and /signup ──
   if (pathname === "/login" || pathname === "/signup") {
     if (user) {
@@ -77,6 +89,7 @@ export const config = {
     "/admin/:path*",
     "/dashboard/:path*",
     "/generate/:path*",
+    "/api/:path*", // API routes are now strictly monitored
     "/login",
     "/signup",
   ],
