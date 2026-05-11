@@ -62,7 +62,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── NEW: Protect API Routes from direct attacks ──
-  if (pathname.startsWith("/api/generate") || pathname.startsWith("/api/pro")) {
+  if (
+    pathname.startsWith("/api/generate-quiz") ||
+    pathname.startsWith("/api/pro")
+  ) {
     if (!user) {
       // Don't redirect API calls, return a strict 401 Unauthorized
       return NextResponse.json(

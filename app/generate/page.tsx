@@ -1,3 +1,5 @@
+// 📁 SAVE AS: src/app/generate/page.tsx
+
 "use client";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabase";
@@ -96,7 +98,6 @@ const checkProStatus = async (userId: string) => {
 
     if (!data.is_pro) return false;
 
-    // Check if Pro has expired
     if (data.pro_expires_at) {
       const expiryDate = new Date(data.pro_expires_at);
       const now = new Date();
@@ -139,7 +140,6 @@ export default function GeneratePage() {
   useDeviceTracking(userId);
 
   useEffect(() => {
-    // Clean URL hash after OAuth redirect
     if (typeof window !== "undefined" && window.location.hash) {
       window.history.replaceState(null, "", window.location.pathname);
     }
@@ -252,25 +252,6 @@ export default function GeneratePage() {
     }
   }, []);
 
-  async function getToken(): Promise<string> {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.access_token) return "";
-
-      const res = await fetch("/api/auth/token", {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-      const data = await res.json();
-      return data.token || "";
-    } catch {
-      return "";
-    }
-  }
-
   const handleGenerateQuiz = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -293,13 +274,10 @@ export default function GeneratePage() {
         setQuestionCount(String(safeQuestionCount));
       }
 
-      const token = await getToken();
-
       const response = await fetch("/api/generate-quiz", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           topic,
@@ -396,9 +374,7 @@ export default function GeneratePage() {
         try {
           localStorage.setItem(DAILY_COUNT_KEY, String(updatedCount));
           localStorage.setItem(LAST_DATE_KEY, getTodayDate());
-        } catch {
-          // If storage is unavailable, keep in-memory count.
-        }
+        } catch {}
       }
     } catch (error) {
       setQuizResults(mockQuiz);
@@ -484,8 +460,6 @@ export default function GeneratePage() {
           );
         });
       }
-
-      // Blank line between each question for readability.
       y += 4;
     });
 
@@ -566,7 +540,6 @@ export default function GeneratePage() {
   const handleDownloadKahoot = () => {
     if (quizResults.length === 0) return;
 
-    // Filter: Kahoot strictly supports Multiple Choice and True/False.
     const supportedQuestions = quizResults.filter(
       (q) => q.type === "mcq" || q.type === "truefalse" || !q.type,
     );
@@ -577,16 +550,15 @@ export default function GeneratePage() {
     }
 
     const kahootData = supportedQuestions.map((q) => {
-      // Find 1-based index for correct answer (1-4)
       const correctIndex = q.options.findIndex((opt) => opt === q.answer) + 1;
 
       return {
-        Question: q.question.substring(0, 120), // 120 char limit[cite: 1]
-        "Answer 1": q.options[0]?.substring(0, 75) || "", // 75 char limit[cite: 1]
+        Question: q.question.substring(0, 120),
+        "Answer 1": q.options[0]?.substring(0, 75) || "",
         "Answer 2": q.options[1]?.substring(0, 75) || "",
         "Answer 3": q.options[2]?.substring(0, 75) || "",
         "Answer 4": q.options[3]?.substring(0, 75) || "",
-        "Time limit (sec)": 20, // Default recommended limit[cite: 1]
+        "Time limit (sec)": 20,
         "Correct answer(s)": correctIndex > 0 ? correctIndex : 1,
       };
     });
@@ -664,6 +636,7 @@ export default function GeneratePage() {
     <>
       <Navbar />
       <main className="min-h-screen bg-white text-slate-900">
+        {/* FREE TIER BANNER */}
         {isFreeUser && (
           <div
             className={
@@ -687,22 +660,35 @@ export default function GeneratePage() {
             </div>
           </div>
         )}
+
+        {/* ── NEW SLEEK PRO BANNER ── */}
         {isPro && (
-          <div className="bg-green-600 px-4 py-2 text-xs text-white sm:text-sm">
+          <div className="bg-slate-900 border-b border-purple-500/20 px-4 py-2.5 text-xs text-purple-100 sm:text-sm">
             <div className="mx-auto flex w-full max-w-6xl items-center justify-between sm:px-2">
-              <span>
+              <span className="flex items-center gap-2 font-medium">
+                <svg
+                  className="w-4 h-4 text-purple-400"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
                 {isDemoActive
                   ? "🎁 Pro Demo Active — enjoy 1 free Pro quiz!"
-                  : "Pro plan active (test mode)"}
+                  : "QuizAI Pro"}
               </span>
               {isDemoActive && (
-                <Link href="/pricing" className="font-bold underline">
+                <Link
+                  href="/pricing"
+                  className="font-bold underline hover:text-white transition-colors"
+                >
                   Upgrade $5/mo →
                 </Link>
               )}
             </div>
           </div>
         )}
+        {/* ─────────────────────────── */}
 
         <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 md:py-16">
           <header>

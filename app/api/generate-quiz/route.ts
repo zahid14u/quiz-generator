@@ -1,5 +1,3 @@
-// 📁 SAVE AS: app/api/generate/route.ts (or src/app/api/generate/route.ts)
-
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
@@ -251,6 +249,26 @@ export async function POST(request: NextRequest) {
         }
 
         console.log(`Success with ${attempt.name}`);
+
+        // ── HYBRID STORAGE: Only save to Supabase if user is Pro ──
+        if (profile.is_pro) {
+          const { error: insertError } = await supabaseServer
+            .from("quizzes")
+            .insert({
+              user_id: userId,
+              topic: topic,
+              difficulty: difficulty,
+              question_type: questionType,
+              num_questions: numQuestions,
+              questions: questions,
+            });
+
+          if (insertError) {
+            console.error("Failed to save quiz to DB:", insertError.message);
+          }
+        }
+        // ─────────────────────────────────────────────────────────
+
         return NextResponse.json({ questions, modelUsed: attempt.name });
       } catch (err: unknown) {
         const error = err as Error;

@@ -48,38 +48,91 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
+    let mounted = true; // Prevents memory leaks and handles silent router crashes
+
     const init = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        router.push("/login");
-        return;
-      }
-      setUser(session.user);
-      const {
-        isPro: pro,
-        plan: p,
-        fullName: fn,
-      } = await checkProStatus(session.user.id);
-      setIsPro(pro);
-      setPlan(p);
-      setFullName(fn);
       try {
-        const stored = localStorage.getItem(QUIZ_HISTORY_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored) as QuizHistoryItem[];
-          if (Array.isArray(parsed)) setQuizHistory(parsed);
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (!mounted) return;
+
+        if (sessionError || !session) {
+          router.push("/login");
+          return;
         }
-        const today = new Date().toISOString().split("T")[0];
-        const lastDate = localStorage.getItem("quizai_last_date");
-        const count = Number(localStorage.getItem("quizai_daily_count") || "0");
-        setDailyCount(lastDate === today ? count : 0);
-      } catch {}
-      setIsLoading(false);
+        setUser(session.user);
+
+        const {
+          isPro: pro,
+          plan: p,
+          fullName: fn,
+        } = await checkProStatus(session.user.id);
+
+        if (!mounted) return;
+
+        setIsPro(pro);
+        setPlan(p);
+        setFullName(fn);
+
+        if (pro) {
+          // PRO USER: Fetch cloud history from Supabase
+          const { data: dbQuizzes, error: dbError } = await supabase
+            .from("quizzes")
+            .select("*")
+            .order("created_at", { ascending: false });
+
+          if (!dbError && dbQuizzes && mounted) {
+            const formattedQuizzes = dbQuizzes.map((q) => ({
+              id: q.id,
+              topic: q.topic,
+              difficulty: q.difficulty,
+              numQuestions: q.num_questions,
+              questions: q.questions,
+              createdAt: q.created_at,
+            }));
+            setQuizHistory(formattedQuizzes);
+
+            const today = new Date().toISOString().split("T")[0];
+            const todaysQuizzes = dbQuizzes.filter((q) =>
+              q.created_at.startsWith(today),
+            );
+            setDailyCount(todaysQuizzes.length);
+          }
+        } else {
+          // FREE USER: Fetch local history from browser storage
+          if (!mounted) return;
+          const stored = localStorage.getItem(QUIZ_HISTORY_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored) as QuizHistoryItem[];
+            if (Array.isArray(parsed)) setQuizHistory(parsed);
+          }
+
+          const today = new Date().toISOString().split("T")[0];
+          const lastDate = localStorage.getItem("quizai_last_date");
+          const count = Number(
+            localStorage.getItem("quizai_daily_count") || "0",
+          );
+          setDailyCount(lastDate === today ? count : 0);
+        }
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+      } finally {
+        // ALWAYS run this, guaranteeing the spinning stops
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
     };
+
     init();
-  }, []);
+
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -88,7 +141,10 @@ export default function DashboardPage() {
 
   const userInitial = (fullName || user?.email || "U")[0].toUpperCase();
   const displayName = fullName || user?.email?.split("@")[0] || "Teacher";
-  const totalQuestions = quizHistory.reduce((s, q) => s + q.numQuestions, 0);
+  const totalQuestions = quizHistory.reduce(
+    (s, q) => s + (q.numQuestions || 0),
+    0,
+  );
 
   const navLinks = [
     {
@@ -417,7 +473,7 @@ export default function DashboardPage() {
             </span>
           </div>
 
-          {/* Stat cards — same colour pattern as admin page */}
+          {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {[
               {
@@ -468,6 +524,39 @@ export default function DashboardPage() {
                 </Link>
               </div>
 
+              {!isPro && quizHistory.length > 0 && (
+                <div className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3 border border-amber-200">
+                  <svg
+                    className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">
+                      Local Storage Only
+                    </p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Your quizzes are currently saved to this browser only.{" "}
+                      <Link
+                        href="/pricing"
+                        className="font-bold underline hover:text-amber-900"
+                      >
+                        Upgrade to Pro
+                      </Link>{" "}
+                      to permanently save and view your quizzes in the cloud.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {quizHistory.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center">
                   <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
@@ -495,43 +584,66 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {quizHistory.slice(0, 5).map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-                        <svg
-                          className="w-4 h-4 text-purple-600"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                  {quizHistory.slice(0, 5).map((item) => {
+                    const innerContent = (
+                      <>
+                        <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                          <svg
+                            className="w-4 h-4 text-purple-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">
+                            {item.topic}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {item.difficulty} · {item.numQuestions} Qs ·{" "}
+                            {new Date(item.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <span className="text-xs text-purple-600 hover:underline flex-shrink-0">
+                          {isPro ? "View Quiz →" : "Reload →"}
+                        </span>
+                      </>
+                    );
+
+                    // Type-safe rendering
+                    if (isPro) {
+                      return (
+                        <Link
+                          key={item.id}
+                          href={`/dashboard/quiz/${item.id}`}
+                          className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 transition-colors cursor-pointer hover:border-purple-200 hover:bg-purple-50"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                          />
-                        </svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">
-                          {item.topic}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {item.difficulty} · {item.numQuestions} Qs ·{" "}
-                          {new Date(item.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
+                          {innerContent}
+                        </Link>
+                      );
+                    }
+
+                    // FREE USER FALLBACK: Redirect to generate page
+                    return (
                       <Link
+                        key={item.id}
                         href="/generate"
-                        className="text-xs text-purple-600 hover:underline flex-shrink-0"
+                        onClick={() => {
+                          localStorage.setItem("quizai_reload_id", item.id);
+                        }}
+                        className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 transition-colors cursor-pointer hover:border-slate-200 hover:bg-slate-50"
                       >
-                        Reload →
+                        {innerContent}
                       </Link>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
