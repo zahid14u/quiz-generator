@@ -760,16 +760,16 @@ export default function GeneratePage() {
                         <option value="5">5</option>
                         <option value="10">10</option>
                         <option value="15">
-                          {isFreeUser ? "15 (Pro)" : "15"}
+                          {isFreeUser ? "15  🔒" : "15"}
                         </option>
                         <option value="20">
-                          {isFreeUser ? "20 (Pro)" : "20"}
+                          {isFreeUser ? "20 🔒" : "20"}
                         </option>
                         <option value="25">
-                          {isFreeUser ? "25 (Pro)" : "25"}
+                          {isFreeUser ? "25 🔒" : "25"}
                         </option>
                         <option value="30">
-                          {isFreeUser ? "30 (Pro)" : "30"}
+                          {isFreeUser ? "30 🔒" : "30"}
                         </option>
                       </select>
                     </div>
@@ -813,19 +813,19 @@ export default function GeneratePage() {
                     >
                       <option value="mcq">MCQ</option>
                       <option value="truefalse">
-                        {isFreeUser ? "True/False (Pro)" : "True/False"}
+                        {isFreeUser ? "True/False 🔒" : "True/False"}
                       </option>
                       <option value="fillinblanks">
                         {isFreeUser
-                          ? "Fill in the Blanks (Pro)"
+                          ? "Fill in the Blanks 🔒"
                           : "Fill in the Blanks"}
                       </option>
                       <option value="shortanswer">
-                        {isFreeUser ? "Short Answer (Pro)" : "Short Answer"}
+                        {isFreeUser ? "Short Answer 🔒" : "Short Answer"}
                       </option>
                       <option value="mixed">
                         {isFreeUser
-                          ? "Mixed question types (Pro)"
+                          ? "Mixed question types 🔒"
                           : "Mixed question types"}
                       </option>
                     </select>
@@ -978,6 +978,17 @@ export default function GeneratePage() {
                             >
                               {getTypeLabel(resolvedType)}
                             </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setQuizResults((prev) =>
+                                  prev.filter((_, i) => i !== index),
+                                )
+                              }
+                              className="rounded-md border border-red-200 px-3 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                            >
+                              🗑️ Delete
+                            </button>
                           </div>
 
                           {(resolvedType === "fillinblanks" ||
