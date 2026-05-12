@@ -8,12 +8,38 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata = {
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
   title: "QuizAI — AI Quiz Generator for Teachers",
   description:
     "Create engaging quizzes in seconds with AI. MCQ, True/False, Fill in Blanks, and Short Answer — built for teachers.",
   verification: {
     google: "suMx87QSl-7MEK9E8CcBNliRYS8n1SW6eOEfnUf1Xk0",
+  },
+  openGraph: {
+    title: "QuizAI — AI Quiz Generator for Teachers",
+    description:
+      "Create engaging quizzes in seconds with AI. MCQ, True/False, Fill in Blanks, and Short Answer — built for teachers.",
+    url: "https://quiz-generator-ten-phi.vercel.app/", // <-- UPDATE THIS to your actual URL
+    siteName: "QuizAI",
+    images: [
+      {
+        url: "https://quiz-generator-ten-phi.vercel.app/og-image.png", // <-- UPDATE THIS
+        width: 1200,
+        height: 630,
+        alt: "QuizAI Dashboard Preview",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "QuizAI — AI Quiz Generator for Teachers",
+    description:
+      "Create engaging quizzes in seconds with AI. MCQ, True/False, Fill in Blanks, and Short Answer — built for teachers.",
+    images: ["https://quiz-generator-ten-phi.vercel.app/og-image.png"], // <-- UPDATE THIS
   },
 };
 
