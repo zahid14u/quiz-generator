@@ -1,53 +1,7 @@
-// 📁 SAVE AS: lib/useDeviceTracking.ts
+// 📁 SAVE AS: src/lib/useDeviceTracking.ts
 
-"use client";
-import { supabase } from "@/lib/supabase";
 import { useEffect } from "react";
-
-// Generates a stable fingerprint for this browser/device
-function getDeviceFingerprint(): string {
-  const nav = window.navigator;
-  const screen = window.screen;
-  const raw = [
-    nav.userAgent,
-    nav.language,
-    screen.colorDepth,
-    screen.width + "x" + screen.height,
-    new Date().getTimezoneOffset(),
-    nav.hardwareConcurrency || "",
-  ].join("|");
-
-  // Simple hash
-  let hash = 0;
-  for (let i = 0; i < raw.length; i++) {
-    const char = raw.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(36);
-}
-
-// Parses a human-readable device name from userAgent
-function getDeviceName(): string {
-  const ua = window.navigator.userAgent;
-  let os = "Unknown OS";
-  let browser = "Unknown Browser";
-
-  if (/Windows NT 10/.test(ua)) os = "Windows 10";
-  else if (/Windows NT 11/.test(ua)) os = "Windows 11";
-  else if (/Mac OS X/.test(ua)) os = "macOS";
-  else if (/Android/.test(ua)) os = "Android";
-  else if (/iPhone|iPad/.test(ua)) os = "iOS";
-  else if (/Linux/.test(ua)) os = "Linux";
-
-  if (/Edg\//.test(ua)) browser = "Edge";
-  else if (/Chrome\//.test(ua)) browser = "Chrome";
-  else if (/Firefox\//.test(ua)) browser = "Firefox";
-  else if (/Safari\//.test(ua)) browser = "Safari";
-  else if (/OPR\//.test(ua)) browser = "Opera";
-
-  return `${browser} on ${os}`;
-}
+import { supabase } from "./supabase";
 
 export function useDeviceTracking(userId: string | undefined) {
   useEffect(() => {
@@ -55,37 +9,87 @@ export function useDeviceTracking(userId: string | undefined) {
 
     const trackDevice = async () => {
       try {
-        const fingerprint = getDeviceFingerprint();
-        const deviceName = getDeviceName();
+        // 1. Get or create a persistent fingerprint for this specific browser
+        let fingerprint = localStorage.getItem("quizai_device_fingerprint");
+        if (!fingerprint) {
+          fingerprint = crypto.randomUUID();
+          localStorage.setItem("quizai_device_fingerprint", fingerprint);
+        }
+
+        // Generate a readable device name
+        const ua = navigator.userAgent;
+        let baseDevice = "Unknown OS";
+        if (ua.includes("Windows")) baseDevice = "Windows PC";
+        else if (ua.includes("Mac")) baseDevice = "Mac";
+        else if (ua.includes("iPhone")) baseDevice = "iPhone";
+        else if (ua.includes("iPad")) baseDevice = "iPad";
+        else if (ua.includes("Android")) baseDevice = "Android";
+
+        let browserName = "Browser";
+        if (ua.includes("Chrome") && !ua.includes("Edg"))
+          browserName = "Chrome";
+        else if (ua.includes("Safari") && !ua.includes("Chrome"))
+          browserName = "Safari";
+        else if (ua.includes("Firefox")) browserName = "Firefox";
+        else if (ua.includes("Edg")) browserName = "Edge";
+
+        const deviceName = `${browserName} on ${baseDevice}`;
         const now = new Date().toISOString();
 
-        // Check if this device is already tracked
-        const { data: existing } = await supabase
+        // 2. Check if this exact device is already registered in your user_sessions table
+        const { data: existingSession } = await supabase
           .from("user_sessions")
           .select("id")
           .eq("user_id", userId)
           .eq("device_fingerprint", fingerprint)
           .single();
 
-        if (existing) {
-          // Update last_active
+        if (existingSession) {
+          // Update the "last_active" timestamp
           await supabase
             .from("user_sessions")
-            .update({ last_active: now })
-            .eq("id", existing.id);
+            .update({ last_active: now, device_name: deviceName })
+            .eq("id", existingSession.id);
         } else {
-          // Insert new device session
+          // Insert the new device session
           await supabase.from("user_sessions").insert({
             user_id: userId,
             device_fingerprint: fingerprint,
             device_name: deviceName,
             last_active: now,
-            created_at: now,
           });
         }
-      } catch (err) {
-        // Silently fail — tracking should never break the app
-        console.warn("Device tracking error:", err);
+
+        // 3. Enforce the 3-device limit
+        const { data: activeSessions } = await supabase
+          .from("user_sessions")
+          .select("id, device_fingerprint")
+          .eq("user_id", userId)
+          .order("last_active", { ascending: false }); // Sort newest to oldest
+
+        if (activeSessions && activeSessions.length > 3) {
+          // Keep the 3 most recently active devices
+          const allowedFingerprints = activeSessions
+            .slice(0, 3)
+            .map((s) => s.device_fingerprint);
+
+          if (!allowedFingerprints.includes(fingerprint)) {
+            alert(
+              "Device limit reached (Max 3). Please log out of another device to use QuizAI here.",
+            );
+            await supabase.auth.signOut();
+            window.location.href = "/login";
+            return;
+          }
+
+          // Clean up the old records from your database to keep it tidy
+          const sessionsToDelete = activeSessions.slice(3);
+          for (const session of sessionsToDelete) {
+            await supabase.from("user_sessions").delete().eq("id", session.id);
+          }
+        }
+      } catch (error) {
+        console.error("Device tracking error:", error);
       }
     };
 

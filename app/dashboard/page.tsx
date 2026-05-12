@@ -48,7 +48,7 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    let mounted = true; // Prevents memory leaks and handles silent router crashes
+    let mounted = true;
 
     const init = async () => {
       try {
@@ -63,6 +63,7 @@ export default function DashboardPage() {
           router.push("/login");
           return;
         }
+
         setUser(session.user);
 
         const {
@@ -103,7 +104,6 @@ export default function DashboardPage() {
           }
         } else {
           // FREE USER: Fetch local history from browser storage
-          if (!mounted) return;
           const stored = localStorage.getItem(QUIZ_HISTORY_KEY);
           if (stored) {
             const parsed = JSON.parse(stored) as QuizHistoryItem[];
@@ -118,9 +118,9 @@ export default function DashboardPage() {
           setDailyCount(lastDate === today ? count : 0);
         }
       } catch (err) {
-        console.error("Failed to load dashboard data:", err);
+        console.error("Critical dashboard error:", err);
       } finally {
-        // ALWAYS run this, guaranteeing the spinning stops
+        // ── FIXED: This ensures the loading spinner always stops ──
         if (mounted) {
           setIsLoading(false);
         }
