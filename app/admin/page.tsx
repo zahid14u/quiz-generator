@@ -3,7 +3,20 @@
 "use client";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
 // Add these interfaces at the top of your file
 export interface Profile {
   id: string;
@@ -26,6 +39,13 @@ export interface Review {
   is_featured: boolean;
   created_at: string;
 }
+
+export interface Quiz {
+  id: string;
+  created_at: string;
+  num_questions: number;
+}
+
 const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
 
 export default function AdminPage() {
@@ -38,6 +58,7 @@ export default function AdminPage() {
   >("all");
   const [users, setUsers] = useState<Profile[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -76,14 +97,12 @@ export default function AdminPage() {
       if (profilesError) throw profilesError;
 
       if (profilesData) {
-        // Cast the data so TypeScript knows exactly what properties exist
         const typedProfiles = profilesData as Profile[];
 
         setUsers(typedProfiles);
         setStats((prev) => ({
           ...prev,
           totalUsers: typedProfiles.length,
-          // Look! No more (u: any). TypeScript knows 'u' is a Profile!
           proUsers: typedProfiles.filter((u) => u.is_pro).length,
           freeUsers: typedProfiles.filter((u) => !u.is_pro).length,
         }));
@@ -98,12 +117,10 @@ export default function AdminPage() {
       if (reviewsError) throw reviewsError;
 
       if (reviewsData) {
-        // Cast the reviews data
         const typedReviews = reviewsData as Review[];
 
         setReviews(typedReviews);
 
-        // No more (r: any) needed here either
         const approved = typedReviews.filter((r) => r.is_approved);
         const avg = approved.length
           ? approved.reduce((s, r) => s + (r.rating || 0), 0) / approved.length
@@ -117,6 +134,16 @@ export default function AdminPage() {
           featuredReviews: typedReviews.filter((r) => r.is_featured).length,
           avgRating: Math.round(avg * 10) / 10,
         }));
+      }
+
+      // --- 3. QUIZZES DATA (For Analytics) ---
+      const { data: quizzesData } = await supabase
+        .from("quizzes")
+        .select("id, created_at, num_questions")
+        .order("created_at", { ascending: true });
+
+      if (quizzesData) {
+        setQuizzes(quizzesData as Quiz[]);
       }
     } catch (error: any) {
       console.error("Failed to load admin data:", error);
@@ -158,7 +185,7 @@ export default function AdminPage() {
 
       if (data.success) {
         await loadData();
-        alert("User record has been permanently deleted."); // <-- Success message here
+        alert("User record has been permanently deleted.");
       } else {
         alert("Delete failed: " + (data.error || "Unknown error"));
       }
@@ -223,6 +250,44 @@ export default function AdminPage() {
     await supabase.auth.signOut();
     router.push("/");
   };
+
+  // --- ANALYTICS CALCULATIONS ---
+  const mrr = stats.proUsers * 5; // Monthly Recurring Revenue ($5/mo)
+  const totalQuestions = quizzes.reduce(
+    (acc, q) => acc + (q.num_questions || 0),
+    0,
+  );
+  const COST_PER_QUESTION = 0.0001;
+  const estimatedCost = totalQuestions * COST_PER_QUESTION;
+  const grossMargin = mrr > 0 ? ((mrr - estimatedCost) / mrr) * 100 : 0;
+
+  // Chart Data Preparation
+  const chartData = useMemo(() => {
+    const dataMap: Record<
+      string,
+      { date: string; signups: number; quizzes: number }
+    > = {};
+
+    users.forEach((user) => {
+      const date = new Date(user.created_at).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      if (!dataMap[date]) dataMap[date] = { date, signups: 0, quizzes: 0 };
+      dataMap[date].signups += 1;
+    });
+
+    quizzes.forEach((quiz) => {
+      const date = new Date(quiz.created_at).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      if (!dataMap[date]) dataMap[date] = { date, signups: 0, quizzes: 0 };
+      dataMap[date].quizzes += 1;
+    });
+
+    return Object.values(dataMap).reverse().slice(-14);
+  }, [users, quizzes]);
 
   // Filtered users based on search
   const filteredUsers = users.filter((u) => {
@@ -378,6 +443,27 @@ export default function AdminPage() {
       </nav>
 
       <div className="p-4 border-t border-white/10 space-y-1">
+        {/* ── NEW: BACK TO DASHBOARD BUTTON ── */}
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-purple-400 hover:text-purple-300 hover:bg-white/10 text-sm font-medium transition-all mb-2"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10 19l-7-7m0 0l7-7m-7 7h18"
+            />
+          </svg>
+          Back to Dashboard
+        </button>
+
         <div className="flex items-center gap-3 px-2 py-2">
           <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
             A
@@ -387,6 +473,7 @@ export default function AdminPage() {
             <p className="text-slate-500 text-xs truncate">{ADMIN_EMAIL}</p>
           </div>
         </div>
+
         <button
           onClick={handleLogout}
           className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 text-sm transition-all"
@@ -411,7 +498,7 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen flex bg-white text-slate-900">
+    <div className="min-h-screen flex bg-slate-50 text-slate-900">
       <div className="hidden lg:flex lg:flex-col w-64 flex-shrink-0 fixed left-0 top-0 bottom-0 z-20">
         <SidebarContent />
       </div>
@@ -488,6 +575,44 @@ export default function AdminPage() {
           {/* ══ OVERVIEW ══ */}
           {activeTab === "overview" && (
             <div className="space-y-6">
+              {/* ── NEW: FINANCIAL STATS ── */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">
+                    Monthly Revenue (MRR)
+                  </p>
+                  <p className="text-3xl font-bold text-emerald-600">
+                    ${mrr.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-2">
+                    Based on {stats.proUsers} active Pro members
+                  </p>
+                </div>
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">
+                    Est. API Cost
+                  </p>
+                  <p className="text-3xl font-bold text-amber-600">
+                    ${estimatedCost.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-2">
+                    ~{totalQuestions} total questions generated
+                  </p>
+                </div>
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">
+                    Gross Margin
+                  </p>
+                  <p className="text-3xl font-bold text-indigo-600">
+                    {grossMargin.toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-slate-400 mt-2">
+                    Highly profitable SaaS metric
+                  </p>
+                </div>
+              </div>
+
+              {/* ── ORIGINAL STAT CARDS ── */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
                   {
@@ -519,38 +644,101 @@ export default function AdminPage() {
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  {
-                    label: "Pending Reviews",
-                    value: stats.pendingReviews,
-                    color: "bg-amber-50 text-amber-700",
-                  },
-                  {
-                    label: "Approved Reviews",
-                    value: stats.approvedReviews,
-                    color: "bg-teal-50 text-teal-700",
-                  },
-                  {
-                    label: "Featured Reviews",
-                    value: stats.featuredReviews,
-                    color: "bg-pink-50 text-pink-700",
-                  },
-                  {
-                    label: "Avg Rating",
-                    value: `${stats.avgRating} ⭐`,
-                    color: "bg-yellow-50 text-yellow-700",
-                  },
-                ].map((s) => (
-                  <div key={s.label} className={`rounded-xl p-5 ${s.color}`}>
-                    <p className="text-xs font-semibold uppercase tracking-wide opacity-70 mb-2">
-                      {s.label}
-                    </p>
-                    <p className="text-3xl font-bold">{s.value}</p>
+
+              {/* ── NEW: RECHARTS ANALYTICS ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-96 flex flex-col">
+                  <h3 className="text-lg font-bold text-slate-900 mb-6">
+                    User Acquisition (Last 14 Active Days)
+                  </h3>
+                  <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          vertical={false}
+                          stroke="#e2e8f0"
+                        />
+                        <XAxis
+                          dataKey="date"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 12, fill: "#64748b" }}
+                          dy={10}
+                        />
+                        <YAxis
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 12, fill: "#64748b" }}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: "8px",
+                            border: "none",
+                            boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                          }}
+                        />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          name="New Signups"
+                          dataKey="signups"
+                          stroke="#10b981"
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
-                ))}
+                </div>
+
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-96 flex flex-col">
+                  <h3 className="text-lg font-bold text-slate-900 mb-6">
+                    Platform Usage (Quizzes Generated)
+                  </h3>
+                  <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          vertical={false}
+                          stroke="#e2e8f0"
+                        />
+                        <XAxis
+                          dataKey="date"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 12, fill: "#64748b" }}
+                          dy={10}
+                        />
+                        <YAxis
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 12, fill: "#64748b" }}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "#f8fafc" }}
+                          contentStyle={{
+                            borderRadius: "8px",
+                            border: "none",
+                            boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                          }}
+                        />
+                        <Legend />
+                        <Bar
+                          name="Quizzes Generated"
+                          dataKey="quizzes"
+                          fill="#9333ea"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
 
+              {/* ── ORIGINAL LOWER SECTIONS ── */}
               <div className="grid lg:grid-cols-2 gap-6">
                 <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
