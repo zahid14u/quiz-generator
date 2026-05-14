@@ -17,7 +17,7 @@ const features = [
       "Generate well-structured questions in seconds, so you can focus on teaching.",
   },
   {
-    title: "Export to PDF",
+    title: "Export to PDF and Kahoot!",
     description:
       "Download and share clean quiz sheets quickly for classroom or online use.",
   },

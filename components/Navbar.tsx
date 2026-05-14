@@ -95,7 +95,7 @@ export default function Navbar() {
           {/* Logo (Requires a white version of the logo!) */}
           <Link href="/" className="flex items-center gap-2">
             <Image
-              src="/logo-white.png"
+              src="/logo.png"
               alt="QuizAI Logo"
               width={140}
               height={40}
