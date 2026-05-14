@@ -14,9 +14,7 @@ export const metadata: Metadata = {
   title: "QuizAI — AI Quiz Generator for Teachers",
   description:
     "Create engaging quizzes in seconds with AI. MCQ, True/False, Fill in Blanks, and Short Answer — built for teachers.",
-  verification: {
-    google: "suMx87QSl-7MEK9E8CcBNliRYS8n1SW6eOEfnUf1Xk0",
-  },
+
   openGraph: {
     title: "QuizAI — AI Quiz Generator for Teachers",
     description:
