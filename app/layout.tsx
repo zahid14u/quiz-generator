@@ -1,7 +1,7 @@
+import { Analytics } from "@vercel/analytics/next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
-
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
@@ -19,11 +19,11 @@ export const metadata: Metadata = {
     title: "QuizAI — AI Quiz Generator for Teachers",
     description:
       "Create engaging quizzes in seconds with AI. MCQ, True/False, Fill in Blanks, and Short Answer — built for teachers.",
-    url: "https://quiz-generator-ten-phi.vercel.app/", // <-- UPDATE THIS to your actual URL
+    url: "https://quizai.dev/", // <-- UPDATE THIS to your actual URL
     siteName: "QuizAI",
     images: [
       {
-        url: "https://quiz-generator-ten-phi.vercel.app/og-image.png", // <-- UPDATE THIS
+        url: "https://quizai.dev/og-image.png", // <-- UPDATE THIS
         width: 1200,
         height: 630,
         alt: "QuizAI Dashboard Preview",
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     title: "QuizAI — AI Quiz Generator for Teachers",
     description:
       "Create engaging quizzes in seconds with AI. MCQ, True/False, Fill in Blanks, and Short Answer — built for teachers.",
-    images: ["https://quiz-generator-ten-phi.vercel.app/og-image.png"], // <-- UPDATE THIS
+    images: ["https://quizai.dev/og-image.png"], // <-- UPDATE THIS
   },
 };
 
@@ -117,6 +117,7 @@ export default function RootLayout({
             </div>
           </div>
         </footer>
+        <Analytics />
       </body>
     </html>
   );
