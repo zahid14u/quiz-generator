@@ -1,9 +1,11 @@
+// 📁 RESTORE TO: app/api/generate-quiz/route.ts
+
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-// Supabase admin client (service role — bypasses RLS, server-side only for database checks)
+// Supabase admin client (service role — bypasses RLS)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -146,9 +148,13 @@ function parseQuestions(rawContent: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    // ── NEW: Secure Supabase SSR Authentication ──
+    const body = await request.json().catch(() => ({}));
+    const { topic, questionType = "mcq", numQuestions, difficulty } = body;
+
     const cookieStore = await cookies();
-    const supabaseServer = createServerClient(
+
+    // ── STRICT SUPABASE SSR AUTHENTICATION CHECK ──
+    const supabaseServerClientInstance = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -160,11 +166,10 @@ export async function POST(request: NextRequest) {
       },
     );
 
-    // Get user securely from the server session
     const {
       data: { user },
       error: authError,
-    } = await supabaseServer.auth.getUser();
+    } = await supabaseServerClientInstance.auth.getUser();
 
     if (authError || !user) {
       return NextResponse.json(
@@ -174,14 +179,6 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = user.id;
-    // ─────────────────────────────────────────────
-
-    const {
-      topic,
-      numQuestions,
-      difficulty,
-      questionType = "mcq",
-    } = await request.json();
 
     if (!topic || !numQuestions || !difficulty) {
       return NextResponse.json(
@@ -190,7 +187,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Server-side plan check via Supabase
+    // Server-side plan subscription check via Supabase Profiles
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("is_pro")
@@ -205,7 +202,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Enforce free tier limit — cannot be bypassed by calling API directly
+    // Enforce free tier question count limits
     if (!profile.is_pro && numQuestions > FREE_TIER_MAX_QUESTIONS) {
       return NextResponse.json(
         {
@@ -216,6 +213,8 @@ export async function POST(request: NextRequest) {
         { status: 403 },
       );
     }
+
+    const isProUser = profile.is_pro;
 
     const messages = [
       { role: "system", content: systemPrompt },
@@ -250,9 +249,9 @@ export async function POST(request: NextRequest) {
 
         console.log(`Success with ${attempt.name}`);
 
-        // ── HYBRID STORAGE: Only save to Supabase if user is Pro ──
-        if (profile.is_pro) {
-          const { error: insertError } = await supabaseServer
+        // Automatically save generation history to DB if user is Pro
+        if (isProUser) {
+          const { error: insertError } = await supabaseServerClientInstance
             .from("quizzes")
             .insert({
               user_id: userId,
@@ -267,7 +266,6 @@ export async function POST(request: NextRequest) {
             console.error("Failed to save quiz to DB:", insertError.message);
           }
         }
-        // ─────────────────────────────────────────────────────────
 
         return NextResponse.json({ questions, modelUsed: attempt.name });
       } catch (err: unknown) {
@@ -282,7 +280,6 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Non-rate-limit error — fail immediately
         console.error(`${attempt.name} error:`, error.message);
         return NextResponse.json(
           { error: `Failed to generate quiz. Please try again.` },
@@ -291,7 +288,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // All 3 failed
     console.error("All AI models exhausted. Last error:", lastError);
     return NextResponse.json(
       {
