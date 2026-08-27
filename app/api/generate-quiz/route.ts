@@ -242,13 +242,14 @@ export async function POST(request: NextRequest) {
 
     // Save to DB for Pro users
     if (profile.is_pro) {
-      await supabaseSSR.from("quizzes").insert({
+      const { error: insertError } = await supabaseSSR.from("quizzes").insert({
         user_id: user.id,
         topic, difficulty,
         question_type: questionType,
         num_questions: numQuestions,
         questions,
-      }).catch((e: any) => console.error("DB save failed:", e.message));
+      });
+      if (insertError) console.error("DB save failed:", insertError.message);
     }
 
     return NextResponse.json({ questions, modelUsed });
