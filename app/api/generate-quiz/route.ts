@@ -1,4 +1,4 @@
-// 📁 RESTORE TO: app/api/generate-quiz/route.ts
+// 📁 SAVE AS: src/app/api/generate-quiz/route.ts
 
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
@@ -94,7 +94,7 @@ async function callGroqPrimary(messages: object[], maxTokens: number) {
     "https://api.groq.com/openai/v1/chat/completions",
     { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
     {
-      model: "llama-3.3-70b-versatile",
+      model: "llama3-70b-8192",
       messages,
       temperature: 0.7,
       max_tokens: maxTokens,
@@ -107,7 +107,7 @@ async function callGroqFallback(messages: object[], maxTokens: number) {
     "https://api.groq.com/openai/v1/chat/completions",
     { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
     {
-      model: "llama-3.1-8b-instant",
+      model: "llama3-8b-8192",
       messages,
       temperature: 0.7,
       max_tokens: maxTokens,
@@ -120,7 +120,7 @@ async function callOpenRouter(messages: object[], maxTokens: number) {
     "https://openrouter.ai/api/v1/chat/completions",
     {
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "HTTP-Referer": "https://quiz-generator-ten-phi.vercel.app",
+      "HTTP-Referer": "https://quizai.dev",
       "X-Title": "QuizAI",
     },
     {
