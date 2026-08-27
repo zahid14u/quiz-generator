@@ -272,19 +272,9 @@ export async function POST(request: NextRequest) {
         const error = err as Error;
         lastError = error.message;
 
-        if (
-          error.message === "RATE_LIMIT_429" ||
-          error.message === "CREDITS_EXHAUSTED"
-        ) {
-          console.log(`${attempt.name} unavailable, trying next...`);
-          continue;
-        }
-
-        console.error(`${attempt.name} error:`, error.message);
-        return NextResponse.json(
-          { error: `Failed to generate quiz. Please try again.` },
-          { status: 500 },
-        );
+        // ✅ FIXED: Always try the next model regardless of error type
+        console.log(`${attempt.name} failed (${error.message}), trying next...`);
+        continue;
       }
     }
 
