@@ -1,7 +1,9 @@
 // 📁 SAVE AS: src/app/api/generate-quiz/route.ts
+//
+// ✅ Uses Node.js runtime with reduced per-model timeout (8s)
+// so all fallback models fit within Vercel Hobby's 10s limit.
+// Groq 429 errors respond instantly so fallback is near-instant.
 
-// ✅ Vercel timeout config — allows up to 60 seconds
-export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 import { createServerClient } from "@supabase/ssr";
@@ -20,12 +22,7 @@ const systemPrompt = `You are a quiz generator for teachers.
 Always respond with valid JSON only, no markdown, no extra text, 
 no code fences. Return only a JSON array starting with [ and ending with ].`;
 
-function buildUserPrompt(
-  topic: string,
-  numQuestions: number,
-  difficulty: string,
-  questionType: string,
-): string {
+function buildUserPrompt(topic: string, numQuestions: number, difficulty: string, questionType: string): string {
   switch (questionType) {
     case "truefalse":
       return `Generate ${numQuestions} True/False questions about '${topic}' at ${difficulty} difficulty. 
@@ -65,14 +62,11 @@ function extractJSON(text: string): string {
   return text;
 }
 
-// ── Core fetch with 15s timeout ──────────────────────────────────────────────
-async function callAPI(
-  url: string,
-  headers: Record<string, string>,
-  body: object,
-): Promise<string> {
+// 8 second timeout — fast enough to fail and try next model
+// Groq 429 responses come back in <1s so fallback is near-instant
+async function callAPI(url: string, headers: Record<string, string>, body: object): Promise<string> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   let response: Response;
   try {
@@ -100,7 +94,6 @@ async function callAPI(
   return data.choices[0].message.content;
 }
 
-// ── Groq helpers (pass any key) ──────────────────────────────────────────────
 function groqCall(apiKey: string, model: string, messages: object[], maxTokens: number) {
   return callAPI(
     "https://api.groq.com/openai/v1/chat/completions",
@@ -109,7 +102,6 @@ function groqCall(apiKey: string, model: string, messages: object[], maxTokens: 
   );
 }
 
-// ── OpenRouter helper (free models — no credits needed) ──────────────────────
 function openRouterCall(model: string, messages: object[], maxTokens: number) {
   return callAPI(
     "https://openrouter.ai/api/v1/chat/completions",
@@ -153,10 +145,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!topic || !numQuestions || !difficulty) {
-      return NextResponse.json(
-        { error: "Missing required fields: topic, numQuestions, difficulty" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
     }
 
     const { data: profile, error: profileError } = await supabase
@@ -179,17 +168,13 @@ export async function POST(request: NextRequest) {
     ];
     const maxTokens = numQuestions > 15 ? 6000 : 4000;
 
-    // ── Groq keys (add GROQ_API_KEY_2 and GROQ_API_KEY_3 to Vercel env vars) ──
     const groqKey1 = process.env.GROQ_API_KEY ?? "";
     const groqKey2 = process.env.GROQ_API_KEY_2 ?? "";
     const groqKey3 = process.env.GROQ_API_KEY_3 ?? "";
 
-    // ── All attempts in order ────────────────────────────────────────────────
-    // Groq: 3 models × up to 3 keys = up to 9 Groq attempts
-    // OpenRouter: 3 truly free models (no credits needed, just rate limited)
     const attempts: { name: string; fn: () => Promise<string> }[] = [];
 
-    // — Groq Key 1 —
+    // Groq Key 1 (you already have this)
     if (groqKey1) {
       attempts.push(
         { name: "Groq-K1 Llama4-Maverick", fn: () => groqCall(groqKey1, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
@@ -198,7 +183,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // — Groq Key 2 (optional — add GROQ_API_KEY_2 to Vercel) —
+    // Groq Key 2 (optional — create free account, add GROQ_API_KEY_2 to Vercel)
     if (groqKey2) {
       attempts.push(
         { name: "Groq-K2 Llama4-Maverick", fn: () => groqCall(groqKey2, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
@@ -207,7 +192,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // — Groq Key 3 (optional — add GROQ_API_KEY_3 to Vercel) —
+    // Groq Key 3 (optional — add GROQ_API_KEY_3 to Vercel)
     if (groqKey3) {
       attempts.push(
         { name: "Groq-K3 Llama4-Maverick", fn: () => groqCall(groqKey3, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
@@ -216,16 +201,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // — OpenRouter free models (truly free, no credits needed) —
+    // OpenRouter free models — $0 balance is fine, these are truly free
     if (process.env.OPENROUTER_API_KEY) {
       attempts.push(
-        { name: "OR Llama3.3-70B",  fn: () => openRouterCall("meta-llama/llama-3.3-70b-instruct:free", messages, maxTokens) },
-        { name: "OR Llama3.1-8B",   fn: () => openRouterCall("meta-llama/llama-3.1-8b-instruct:free", messages, maxTokens) },
-        { name: "OR Mistral-7B",    fn: () => openRouterCall("mistralai/mistral-7b-instruct:free", messages, maxTokens) },
+        { name: "OR Llama3.3-70B", fn: () => openRouterCall("meta-llama/llama-3.3-70b-instruct:free", messages, maxTokens) },
+        { name: "OR Llama3.1-8B",  fn: () => openRouterCall("meta-llama/llama-3.1-8b-instruct:free", messages, maxTokens) },
+        { name: "OR Mistral-7B",   fn: () => openRouterCall("mistralai/mistral-7b-instruct:free", messages, maxTokens) },
       );
     }
 
-    // ── Try each model in order ──────────────────────────────────────────────
     let lastError = "";
     for (const attempt of attempts) {
       try {
@@ -239,7 +223,6 @@ export async function POST(request: NextRequest) {
 
         console.log(`✅ Success with ${attempt.name}`);
 
-        // Save to DB for Pro users
         if (profile.is_pro) {
           await supabaseSSR.from("quizzes").insert({
             user_id: user.id,
