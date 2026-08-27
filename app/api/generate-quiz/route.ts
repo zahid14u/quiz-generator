@@ -1,5 +1,10 @@
 // 📁 SAVE AS: src/app/api/generate-quiz/route.ts
 
+// ✅ Increase Vercel function timeout from default 10s to 60s
+// (requires Vercel Hobby plan or above — free plan supports up to 60s on Edge)
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
@@ -70,11 +75,24 @@ async function callAPI(
   headers: Record<string, string>,
   body: object,
 ): Promise<string> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
+  // ✅ 15-second timeout — if model hangs, move to next one automatically
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError") throw new Error("TIMEOUT");
+    throw err;
+  }
+  clearTimeout(timeoutId);
 
   if (response.status === 429) throw new Error("RATE_LIMIT_429");
   if (response.status === 402) throw new Error("CREDITS_EXHAUSTED");
