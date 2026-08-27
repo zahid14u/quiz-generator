@@ -1,8 +1,6 @@
 // 📁 SAVE AS: src/app/api/generate-quiz/route.ts
-//
-// ✅ Uses Node.js runtime with reduced per-model timeout (8s)
-// so all fallback models fit within Vercel Hobby's 10s limit.
-// Groq 429 errors respond instantly so fallback is near-instant.
+// ✅ PARALLEL model calls — all models tried at once, fastest wins
+// Solves Vercel 10s timeout by not waiting for each model sequentially
 
 export const dynamic = "force-dynamic";
 
@@ -62,58 +60,6 @@ function extractJSON(text: string): string {
   return text;
 }
 
-// 8 second timeout — fast enough to fail and try next model
-// Groq 429 responses come back in <1s so fallback is near-instant
-async function callAPI(url: string, headers: Record<string, string>, body: object): Promise<string> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === "AbortError") throw new Error("TIMEOUT");
-    throw err;
-  }
-  clearTimeout(timeoutId);
-
-  if (response.status === 429) throw new Error("RATE_LIMIT_429");
-  if (response.status === 402) throw new Error("CREDITS_EXHAUSTED");
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`API_ERROR: ${JSON.stringify(error)}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
-}
-
-function groqCall(apiKey: string, model: string, messages: object[], maxTokens: number) {
-  return callAPI(
-    "https://api.groq.com/openai/v1/chat/completions",
-    { Authorization: `Bearer ${apiKey}` },
-    { model, messages, temperature: 0.7, max_tokens: maxTokens },
-  );
-}
-
-function openRouterCall(model: string, messages: object[], maxTokens: number) {
-  return callAPI(
-    "https://openrouter.ai/api/v1/chat/completions",
-    {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "HTTP-Referer": "https://quizai.dev",
-      "X-Title": "QuizAI",
-    },
-    { model, messages, temperature: 0.7, max_tokens: maxTokens },
-  );
-}
-
 function parseQuestions(rawContent: string) {
   const cleanedContent = extractJSON(rawContent.trim());
   try {
@@ -125,6 +71,77 @@ function parseQuestions(rawContent: string) {
     }
     throw new Error("Cannot parse JSON");
   }
+}
+
+async function callModel(
+  name: string,
+  url: string,
+  headers: Record<string, string>,
+  body: object,
+): Promise<{ name: string; questions: any[] }> {
+  const controller = new AbortController();
+  // 9s timeout — just under Vercel's 10s limit
+  const timeoutId = setTimeout(() => controller.abort(), 9000);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(`${response.status}: ${JSON.stringify(err)}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) throw new Error("Empty response");
+
+    const questions = parseQuestions(content);
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new Error("Empty questions array");
+    }
+
+    return { name, questions };
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    throw new Error(`${name} failed: ${err.message}`);
+  }
+}
+
+// Race all models — first successful one wins
+async function raceModels(
+  models: { name: string; url: string; headers: Record<string, string>; body: object }[]
+): Promise<{ name: string; questions: any[] }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    models.forEach((m) => {
+      callModel(m.name, m.url, m.headers, m.body)
+        .then((result) => {
+          if (!settled) {
+            settled = true;
+            console.log(`✅ Won race: ${result.name}`);
+            resolve(result);
+          }
+        })
+        .catch((err) => {
+          failCount++;
+          errors.push(err.message);
+          console.log(`❌ ${err.message}`);
+          if (failCount === models.length && !settled) {
+            reject(new Error(`All models failed: ${errors.join(" | ")}`));
+          }
+        });
+    });
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -171,87 +188,85 @@ export async function POST(request: NextRequest) {
     const groqKey1 = process.env.GROQ_API_KEY ?? "";
     const groqKey2 = process.env.GROQ_API_KEY_2 ?? "";
     const groqKey3 = process.env.GROQ_API_KEY_3 ?? "";
+    const orKey    = process.env.OPENROUTER_API_KEY ?? "";
 
-    const attempts: { name: string; fn: () => Promise<string> }[] = [];
+    // Build list of ALL models to race in parallel
+    const models: { name: string; url: string; headers: Record<string, string>; body: object }[] = [];
 
-    // Groq Key 1 (you already have this)
-    if (groqKey1) {
-      attempts.push(
-        { name: "Groq-K1 Llama4-Maverick", fn: () => groqCall(groqKey1, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
-        { name: "Groq-K1 Qwen3-32B",       fn: () => groqCall(groqKey1, "qwen/qwen3-32b", messages, maxTokens) },
-        { name: "Groq-K1 Llama4-Scout",    fn: () => groqCall(groqKey1, "meta-llama/llama-4-scout-17b-16e-instruct", messages, maxTokens) },
-      );
-    }
+    const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
+    const orUrl   = "https://openrouter.ai/api/v1/chat/completions";
 
-    // Groq Key 2 (optional — create free account, add GROQ_API_KEY_2 to Vercel)
-    if (groqKey2) {
-      attempts.push(
-        { name: "Groq-K2 Llama4-Maverick", fn: () => groqCall(groqKey2, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
-        { name: "Groq-K2 Qwen3-32B",       fn: () => groqCall(groqKey2, "qwen/qwen3-32b", messages, maxTokens) },
-        { name: "Groq-K2 Llama4-Scout",    fn: () => groqCall(groqKey2, "meta-llama/llama-4-scout-17b-16e-instruct", messages, maxTokens) },
-      );
-    }
-
-    // Groq Key 3 (optional — add GROQ_API_KEY_3 to Vercel)
-    if (groqKey3) {
-      attempts.push(
-        { name: "Groq-K3 Llama4-Maverick", fn: () => groqCall(groqKey3, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
-        { name: "Groq-K3 Qwen3-32B",       fn: () => groqCall(groqKey3, "qwen/qwen3-32b", messages, maxTokens) },
-        { name: "Groq-K3 Llama4-Scout",    fn: () => groqCall(groqKey3, "meta-llama/llama-4-scout-17b-16e-instruct", messages, maxTokens) },
-      );
-    }
-
-    // OpenRouter free models — $0 balance is fine, these are truly free
-    if (process.env.OPENROUTER_API_KEY) {
-      attempts.push(
-        { name: "OR Llama3.3-70B", fn: () => openRouterCall("meta-llama/llama-3.3-70b-instruct:free", messages, maxTokens) },
-        { name: "OR Llama3.1-8B",  fn: () => openRouterCall("meta-llama/llama-3.1-8b-instruct:free", messages, maxTokens) },
-        { name: "OR Mistral-7B",   fn: () => openRouterCall("mistralai/mistral-7b-instruct:free", messages, maxTokens) },
-      );
-    }
-
-    let lastError = "";
-    for (const attempt of attempts) {
-      try {
-        console.log(`Trying ${attempt.name}...`);
-        const rawContent = await attempt.fn();
-        const questions = parseQuestions(rawContent);
-
-        if (!Array.isArray(questions) || questions.length === 0) {
-          throw new Error("Empty questions array");
-        }
-
-        console.log(`✅ Success with ${attempt.name}`);
-
-        if (profile.is_pro) {
-          await supabaseSSR.from("quizzes").insert({
-            user_id: user.id,
-            topic, difficulty,
-            question_type: questionType,
-            num_questions: numQuestions,
-            questions,
-          });
-        }
-
-        return NextResponse.json({ questions, modelUsed: attempt.name });
-
-      } catch (err: unknown) {
-        const error = err as Error;
-        lastError = error.message;
-        console.log(`❌ ${attempt.name} failed: ${error.message} — trying next...`);
-        continue;
+    // Groq models (all 3 keys × 3 models — use whichever keys you have)
+    for (const [idx, key] of [[1, groqKey1], [2, groqKey2], [3, groqKey3]] as [number, string][]) {
+      if (!key) continue;
+      for (const model of [
+        "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "qwen/qwen3-32b",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+      ]) {
+        models.push({
+          name: `Groq-K${idx} ${model.split("/").pop()}`,
+          url: groqUrl,
+          headers: { Authorization: `Bearer ${key}` },
+          body: { model, messages, temperature: 0.7, max_tokens: maxTokens },
+        });
       }
     }
 
-    console.error("All models exhausted. Last error:", lastError);
-    return NextResponse.json(
-      { error: "Our AI is taking a short break. Please try again in a few minutes." },
-      { status: 429 },
-    );
+    // OpenRouter free models (no credits needed)
+    if (orKey) {
+      for (const model of [
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "mistralai/mistral-7b-instruct:free",
+      ]) {
+        models.push({
+          name: `OR ${model.split("/").pop()}`,
+          url: orUrl,
+          headers: {
+            Authorization: `Bearer ${orKey}`,
+            "HTTP-Referer": "https://quizai.dev",
+            "X-Title": "QuizAI",
+          },
+          body: { model, messages, temperature: 0.7, max_tokens: maxTokens },
+        });
+      }
+    }
+
+    if (models.length === 0) {
+      return NextResponse.json({ error: "No API keys configured." }, { status: 500 });
+    }
+
+    // 🏁 RACE — all models fire at once, first success wins
+    const { name: modelUsed, questions } = await raceModels(models);
+
+    // Save to DB for Pro users
+    if (profile.is_pro) {
+      await supabaseSSR.from("quizzes").insert({
+        user_id: user.id,
+        topic, difficulty,
+        question_type: questionType,
+        num_questions: numQuestions,
+        questions,
+      }).catch((e: any) => console.error("DB save failed:", e.message));
+    }
+
+    return NextResponse.json({ questions, modelUsed });
 
   } catch (error: unknown) {
     const err = error as Error;
     console.error("Quiz generation error:", err.message);
-    return NextResponse.json({ error: `Failed to generate quiz: ${err.message}` }, { status: 500 });
+
+    if (err.message.includes("All models failed")) {
+      return NextResponse.json(
+        { error: "Our AI is taking a short break. Please try again in a few minutes." },
+        { status: 429 },
+      );
+    }
+
+    return NextResponse.json(
+      { error: `Failed to generate quiz: ${err.message}` },
+      { status: 500 }
+    );
   }
 }
