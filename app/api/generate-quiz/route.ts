@@ -5,7 +5,6 @@ import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-// Supabase admin client (service role — bypasses RLS)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -89,12 +88,13 @@ async function callAPI(
   return data.choices[0].message.content;
 }
 
+// ✅ PRIMARY: Llama 4 Maverick — Groq's recommended replacement (fast, free)
 async function callGroqPrimary(messages: object[], maxTokens: number) {
   return callAPI(
     "https://api.groq.com/openai/v1/chat/completions",
     { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
     {
-      model: "llama3-70b-8192",
+      model: "meta-llama/llama-4-maverick-17b-128e-instruct",
       messages,
       temperature: 0.7,
       max_tokens: maxTokens,
@@ -102,12 +102,13 @@ async function callGroqPrimary(messages: object[], maxTokens: number) {
   );
 }
 
+// ✅ FALLBACK 1: Qwen3 32B — also recommended by Groq email
 async function callGroqFallback(messages: object[], maxTokens: number) {
   return callAPI(
     "https://api.groq.com/openai/v1/chat/completions",
     { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
     {
-      model: "llama3-8b-8192",
+      model: "qwen/qwen3-32b",
       messages,
       temperature: 0.7,
       max_tokens: maxTokens,
@@ -115,6 +116,21 @@ async function callGroqFallback(messages: object[], maxTokens: number) {
   );
 }
 
+// ✅ FALLBACK 2: Llama 4 Scout — lighter, still current
+async function callGroqScout(messages: object[], maxTokens: number) {
+  return callAPI(
+    "https://api.groq.com/openai/v1/chat/completions",
+    { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+    {
+      model: "meta-llama/llama-4-scout-17b-16e-instruct",
+      messages,
+      temperature: 0.7,
+      max_tokens: maxTokens,
+    },
+  );
+}
+
+// ✅ FALLBACK 3: OpenRouter — last resort using a free model
 async function callOpenRouter(messages: object[], maxTokens: number) {
   return callAPI(
     "https://openrouter.ai/api/v1/chat/completions",
@@ -153,7 +169,6 @@ export async function POST(request: NextRequest) {
 
     const cookieStore = await cookies();
 
-    // ── STRICT SUPABASE SSR AUTHENTICATION CHECK ──
     const supabaseServerClientInstance = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -187,7 +202,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Server-side plan subscription check via Supabase Profiles
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("is_pro")
@@ -202,7 +216,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Enforce free tier question count limits
     if (!profile.is_pro && numQuestions > FREE_TIER_MAX_QUESTIONS) {
       return NextResponse.json(
         {
@@ -226,13 +239,12 @@ export async function POST(request: NextRequest) {
 
     const maxTokens = numQuestions > 15 ? 6000 : 4000;
 
+    // ✅ 4 models now — all current and working as of Aug 2026
     const attempts = [
-      { name: "Groq primary", fn: () => callGroqPrimary(messages, maxTokens) },
-      {
-        name: "Groq fallback",
-        fn: () => callGroqFallback(messages, maxTokens),
-      },
-      { name: "OpenRouter", fn: () => callOpenRouter(messages, maxTokens) },
+      { name: "Groq Llama4 Maverick", fn: () => callGroqPrimary(messages, maxTokens) },
+      { name: "Groq Qwen3-32B",       fn: () => callGroqFallback(messages, maxTokens) },
+      { name: "Groq Llama4 Scout",    fn: () => callGroqScout(messages, maxTokens) },
+      { name: "OpenRouter",           fn: () => callOpenRouter(messages, maxTokens) },
     ];
 
     let lastError = "";
@@ -247,9 +259,8 @@ export async function POST(request: NextRequest) {
           throw new Error("Empty questions array");
         }
 
-        console.log(`Success with ${attempt.name}`);
+        console.log(`✅ Success with ${attempt.name}`);
 
-        // Automatically save generation history to DB if user is Pro
         if (isProUser) {
           const { error: insertError } = await supabaseServerClientInstance
             .from("quizzes")
@@ -271,9 +282,8 @@ export async function POST(request: NextRequest) {
       } catch (err: unknown) {
         const error = err as Error;
         lastError = error.message;
-
-        // ✅ FIXED: Always try the next model regardless of error type
-        console.log(`${attempt.name} failed (${error.message}), trying next...`);
+        // ✅ Always try next model regardless of error type
+        console.log(`❌ ${attempt.name} failed (${error.message}), trying next...`);
         continue;
       }
     }
