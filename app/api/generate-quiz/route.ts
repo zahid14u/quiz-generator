@@ -1,7 +1,6 @@
 // 📁 SAVE AS: src/app/api/generate-quiz/route.ts
 
-// ✅ Increase Vercel function timeout from default 10s to 60s
-// (requires Vercel Hobby plan or above — free plan supports up to 60s on Edge)
+// ✅ Vercel timeout config — allows up to 60 seconds
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
@@ -32,19 +31,16 @@ function buildUserPrompt(
       return `Generate ${numQuestions} True/False questions about '${topic}' at ${difficulty} difficulty. 
 Return ONLY a JSON array: [{"question": string, "options": ["True","False"], "answer": string}]
 Answer must be exactly "True" or "False". Do not add any explanation. Complete all ${numQuestions} questions.`;
-
     case "fillinblanks":
       return `Generate ${numQuestions} fill-in-the-blank questions about '${topic}' at ${difficulty} difficulty.
 Each question must have a blank shown as _______
 Return ONLY a JSON array: [{"question": string, "options": [string,string,string,string], "answer": string}]
 Example: {"question": "The _______ protocol is used for sending email.", "options": ["SMTP","HTTP","FTP","DNS"], "answer": "SMTP"}
 Do not add any explanation. Complete all ${numQuestions} questions.`;
-
     case "shortanswer":
       return `Generate ${numQuestions} short answer questions about '${topic}' at ${difficulty} difficulty.
 Return ONLY a JSON array: [{"question": string, "options": [], "answer": string}]
 Answer should be 1-2 sentences maximum. Do not add any explanation. Complete all ${numQuestions} questions.`;
-
     case "mixed":
       return `Generate ${numQuestions} mixed questions about '${topic}' at ${difficulty} difficulty.
 Mix these types equally: MCQ, True/False, Fill in the blank, Short answer.
@@ -52,7 +48,6 @@ Return ONLY a JSON array:
 [{"type": "mcq"|"truefalse"|"fillinblanks"|"shortanswer", "question": string, "options": [string], "answer": string}]
 For shortanswer options = []. For truefalse options = ["True","False"]. For fillinblanks question must contain _______.
 Do not add any explanation. Complete all ${numQuestions} questions.`;
-
     default:
       return `Generate ${numQuestions} multiple choice questions about '${topic}' at ${difficulty} difficulty.
 Return ONLY a JSON array: [{"question": string, "options": [string,string,string,string], "answer": string}]
@@ -70,12 +65,12 @@ function extractJSON(text: string): string {
   return text;
 }
 
+// ── Core fetch with 15s timeout ──────────────────────────────────────────────
 async function callAPI(
   url: string,
   headers: Record<string, string>,
   body: object,
 ): Promise<string> {
-  // ✅ 15-second timeout — if model hangs, move to next one automatically
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -96,9 +91,8 @@ async function callAPI(
 
   if (response.status === 429) throw new Error("RATE_LIMIT_429");
   if (response.status === 402) throw new Error("CREDITS_EXHAUSTED");
-
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({}));
     throw new Error(`API_ERROR: ${JSON.stringify(error)}`);
   }
 
@@ -106,50 +100,17 @@ async function callAPI(
   return data.choices[0].message.content;
 }
 
-// ✅ PRIMARY: Llama 4 Maverick — Groq's recommended replacement (fast, free)
-async function callGroqPrimary(messages: object[], maxTokens: number) {
+// ── Groq helpers (pass any key) ──────────────────────────────────────────────
+function groqCall(apiKey: string, model: string, messages: object[], maxTokens: number) {
   return callAPI(
     "https://api.groq.com/openai/v1/chat/completions",
-    { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-    {
-      model: "meta-llama/llama-4-maverick-17b-128e-instruct",
-      messages,
-      temperature: 0.7,
-      max_tokens: maxTokens,
-    },
+    { Authorization: `Bearer ${apiKey}` },
+    { model, messages, temperature: 0.7, max_tokens: maxTokens },
   );
 }
 
-// ✅ FALLBACK 1: Qwen3 32B — also recommended by Groq email
-async function callGroqFallback(messages: object[], maxTokens: number) {
-  return callAPI(
-    "https://api.groq.com/openai/v1/chat/completions",
-    { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-    {
-      model: "qwen/qwen3-32b",
-      messages,
-      temperature: 0.7,
-      max_tokens: maxTokens,
-    },
-  );
-}
-
-// ✅ FALLBACK 2: Llama 4 Scout — lighter, still current
-async function callGroqScout(messages: object[], maxTokens: number) {
-  return callAPI(
-    "https://api.groq.com/openai/v1/chat/completions",
-    { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-    {
-      model: "meta-llama/llama-4-scout-17b-16e-instruct",
-      messages,
-      temperature: 0.7,
-      max_tokens: maxTokens,
-    },
-  );
-}
-
-// ✅ FALLBACK 3: OpenRouter — last resort using a free model
-async function callOpenRouter(messages: object[], maxTokens: number) {
+// ── OpenRouter helper (free models — no credits needed) ──────────────────────
+function openRouterCall(model: string, messages: object[], maxTokens: number) {
   return callAPI(
     "https://openrouter.ai/api/v1/chat/completions",
     {
@@ -157,18 +118,12 @@ async function callOpenRouter(messages: object[], maxTokens: number) {
       "HTTP-Referer": "https://quizai.dev",
       "X-Title": "QuizAI",
     },
-    {
-      model: "meta-llama/llama-3.3-70b-instruct:free",
-      messages,
-      temperature: 0.7,
-      max_tokens: maxTokens,
-    },
+    { model, messages, temperature: 0.7, max_tokens: maxTokens },
   );
 }
 
 function parseQuestions(rawContent: string) {
   const cleanedContent = extractJSON(rawContent.trim());
-
   try {
     return JSON.parse(cleanedContent);
   } catch {
@@ -186,32 +141,16 @@ export async function POST(request: NextRequest) {
     const { topic, questionType = "mcq", numQuestions, difficulty } = body;
 
     const cookieStore = await cookies();
-
-    const supabaseServerClientInstance = createServerClient(
+    const supabaseSSR = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-        },
-      },
+      { cookies: { getAll() { return cookieStore.getAll(); } } },
     );
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseServerClientInstance.auth.getUser();
-
+    const { data: { user }, error: authError } = await supabaseSSR.auth.getUser();
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized API access. Please log in." },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
     }
-
-    const userId = user.id;
 
     if (!topic || !numQuestions || !difficulty) {
       return NextResponse.json(
@@ -221,52 +160,73 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("is_pro")
-      .eq("id", userId)
-      .single();
+      .from("profiles").select("is_pro").eq("id", user.id).single();
 
     if (profileError || !profile) {
-      console.error("Profile fetch error:", profileError?.message);
-      return NextResponse.json(
-        { error: "Could not verify user plan. Please try again." },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "Could not verify user plan." }, { status: 500 });
     }
 
     if (!profile.is_pro && numQuestions > FREE_TIER_MAX_QUESTIONS) {
       return NextResponse.json(
-        {
-          error: "FREE_TIER_LIMIT",
-          message: `Free plan is limited to ${FREE_TIER_MAX_QUESTIONS} questions per quiz.`,
-          upgradeRequired: true,
-        },
+        { error: "FREE_TIER_LIMIT", message: `Free plan limit: ${FREE_TIER_MAX_QUESTIONS} questions.`, upgradeRequired: true },
         { status: 403 },
       );
     }
 
-    const isProUser = profile.is_pro;
-
     const messages = [
       { role: "system", content: systemPrompt },
-      {
-        role: "user",
-        content: buildUserPrompt(topic, numQuestions, difficulty, questionType),
-      },
+      { role: "user", content: buildUserPrompt(topic, numQuestions, difficulty, questionType) },
     ];
-
     const maxTokens = numQuestions > 15 ? 6000 : 4000;
 
-    // ✅ 4 models now — all current and working as of Aug 2026
-    const attempts = [
-      { name: "Groq Llama4 Maverick", fn: () => callGroqPrimary(messages, maxTokens) },
-      { name: "Groq Qwen3-32B",       fn: () => callGroqFallback(messages, maxTokens) },
-      { name: "Groq Llama4 Scout",    fn: () => callGroqScout(messages, maxTokens) },
-      { name: "OpenRouter",           fn: () => callOpenRouter(messages, maxTokens) },
-    ];
+    // ── Groq keys (add GROQ_API_KEY_2 and GROQ_API_KEY_3 to Vercel env vars) ──
+    const groqKey1 = process.env.GROQ_API_KEY ?? "";
+    const groqKey2 = process.env.GROQ_API_KEY_2 ?? "";
+    const groqKey3 = process.env.GROQ_API_KEY_3 ?? "";
 
+    // ── All attempts in order ────────────────────────────────────────────────
+    // Groq: 3 models × up to 3 keys = up to 9 Groq attempts
+    // OpenRouter: 3 truly free models (no credits needed, just rate limited)
+    const attempts: { name: string; fn: () => Promise<string> }[] = [];
+
+    // — Groq Key 1 —
+    if (groqKey1) {
+      attempts.push(
+        { name: "Groq-K1 Llama4-Maverick", fn: () => groqCall(groqKey1, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
+        { name: "Groq-K1 Qwen3-32B",       fn: () => groqCall(groqKey1, "qwen/qwen3-32b", messages, maxTokens) },
+        { name: "Groq-K1 Llama4-Scout",    fn: () => groqCall(groqKey1, "meta-llama/llama-4-scout-17b-16e-instruct", messages, maxTokens) },
+      );
+    }
+
+    // — Groq Key 2 (optional — add GROQ_API_KEY_2 to Vercel) —
+    if (groqKey2) {
+      attempts.push(
+        { name: "Groq-K2 Llama4-Maverick", fn: () => groqCall(groqKey2, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
+        { name: "Groq-K2 Qwen3-32B",       fn: () => groqCall(groqKey2, "qwen/qwen3-32b", messages, maxTokens) },
+        { name: "Groq-K2 Llama4-Scout",    fn: () => groqCall(groqKey2, "meta-llama/llama-4-scout-17b-16e-instruct", messages, maxTokens) },
+      );
+    }
+
+    // — Groq Key 3 (optional — add GROQ_API_KEY_3 to Vercel) —
+    if (groqKey3) {
+      attempts.push(
+        { name: "Groq-K3 Llama4-Maverick", fn: () => groqCall(groqKey3, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
+        { name: "Groq-K3 Qwen3-32B",       fn: () => groqCall(groqKey3, "qwen/qwen3-32b", messages, maxTokens) },
+        { name: "Groq-K3 Llama4-Scout",    fn: () => groqCall(groqKey3, "meta-llama/llama-4-scout-17b-16e-instruct", messages, maxTokens) },
+      );
+    }
+
+    // — OpenRouter free models (truly free, no credits needed) —
+    if (process.env.OPENROUTER_API_KEY) {
+      attempts.push(
+        { name: "OR Llama3.3-70B",  fn: () => openRouterCall("meta-llama/llama-3.3-70b-instruct:free", messages, maxTokens) },
+        { name: "OR Llama3.1-8B",   fn: () => openRouterCall("meta-llama/llama-3.1-8b-instruct:free", messages, maxTokens) },
+        { name: "OR Mistral-7B",    fn: () => openRouterCall("mistralai/mistral-7b-instruct:free", messages, maxTokens) },
+      );
+    }
+
+    // ── Try each model in order ──────────────────────────────────────────────
     let lastError = "";
-
     for (const attempt of attempts) {
       try {
         console.log(`Trying ${attempt.name}...`);
@@ -279,47 +239,36 @@ export async function POST(request: NextRequest) {
 
         console.log(`✅ Success with ${attempt.name}`);
 
-        if (isProUser) {
-          const { error: insertError } = await supabaseServerClientInstance
-            .from("quizzes")
-            .insert({
-              user_id: userId,
-              topic: topic,
-              difficulty: difficulty,
-              question_type: questionType,
-              num_questions: numQuestions,
-              questions: questions,
-            });
-
-          if (insertError) {
-            console.error("Failed to save quiz to DB:", insertError.message);
-          }
+        // Save to DB for Pro users
+        if (profile.is_pro) {
+          await supabaseSSR.from("quizzes").insert({
+            user_id: user.id,
+            topic, difficulty,
+            question_type: questionType,
+            num_questions: numQuestions,
+            questions,
+          });
         }
 
         return NextResponse.json({ questions, modelUsed: attempt.name });
+
       } catch (err: unknown) {
         const error = err as Error;
         lastError = error.message;
-        // ✅ Always try next model regardless of error type
-        console.log(`❌ ${attempt.name} failed (${error.message}), trying next...`);
+        console.log(`❌ ${attempt.name} failed: ${error.message} — trying next...`);
         continue;
       }
     }
 
-    console.error("All AI models exhausted. Last error:", lastError);
+    console.error("All models exhausted. Last error:", lastError);
     return NextResponse.json(
-      {
-        error:
-          "Our AI is taking a short break due to high usage. Please try again in a few minutes.",
-      },
+      { error: "Our AI is taking a short break. Please try again in a few minutes." },
       { status: 429 },
     );
+
   } catch (error: unknown) {
     const err = error as Error;
     console.error("Quiz generation error:", err.message);
-    return NextResponse.json(
-      { error: `Failed to generate quiz: ${err.message}` },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: `Failed to generate quiz: ${err.message}` }, { status: 500 });
   }
 }
