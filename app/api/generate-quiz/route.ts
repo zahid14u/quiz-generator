@@ -1,5 +1,5 @@
 // 📁 SAVE AS: src/app/api/generate-quiz/route.ts
-// ✅ Uses Google Gemini (free) as primary + Groq + OpenRouter as fallbacks
+// ✅ Google Gemini primary + Groq + OpenRouter fallbacks
 
 export const dynamic = "force-dynamic";
 
@@ -70,43 +70,59 @@ function parseQuestions(rawContent: string) {
   }
 }
 
-// ── Google Gemini (FREE — 1500 req/day, no credit card) ──────────────────────
+// ── Google Gemini — tries both API versions for compatibility ─────────────────
 async function callGemini(prompt: string, maxTokens: number): Promise<string> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) throw new Error("No GOOGLE_AI_API_KEY");
 
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 9000);
+  console.log(`[Gemini] Key starts with: ${apiKey.substring(0, 6)}...`);
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: systemPrompt + "\n\n" + prompt }] }],
-          generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
-        }),
-        signal: controller.signal,
+  // Try gemini-2.0-flash first, then gemini-1.5-flash as fallback
+  const models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 9000);
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: systemPrompt + "\n\n" + prompt }] }],
+            generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
+          }),
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(t);
+
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        console.log(`[Gemini] ${model} failed ${res.status}: ${JSON.stringify(e)}`);
+        continue; // try next model
       }
-    );
-    clearTimeout(t);
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(`Gemini ${res.status}: ${JSON.stringify(e)}`);
+
+      const data = await res.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      if (!text) throw new Error("Empty Gemini response");
+      console.log(`[Gemini] ✅ ${model} succeeded`);
+      return text;
+    } catch (err: any) {
+      clearTimeout(t);
+      if (err.name === "AbortError") { console.log(`[Gemini] ${model} timeout`); continue; }
+      if (err.message.includes("Cannot parse") || err.message.includes("Empty")) throw err;
+      console.log(`[Gemini] ${model} error: ${err.message}`);
+      continue;
     }
-    const data = await res.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  } catch (err: any) {
-    clearTimeout(t);
-    if (err.name === "AbortError") throw new Error("TIMEOUT");
-    throw err;
   }
+  throw new Error("All Gemini models failed");
 }
 
-// ── OpenRouter / Groq (OpenAI-compatible) ────────────────────────────────────
+// ── OpenAI-compatible (Groq / OpenRouter) ────────────────────────────────────
 async function callOpenAICompat(
+  name: string,
   url: string,
   headers: Record<string, string>,
   model: string,
@@ -115,7 +131,6 @@ async function callOpenAICompat(
 ): Promise<string> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 9000);
-
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -186,32 +201,34 @@ export async function POST(request: NextRequest) {
     const orKey    = process.env.OPENROUTER_API_KEY ?? "";
     const groqUrl  = "https://api.groq.com/openai/v1/chat/completions";
     const orUrl    = "https://openrouter.ai/api/v1/chat/completions";
-    const orHeaders = { Authorization: `Bearer ${orKey}`, "HTTP-Referer": "https://quizai.dev", "X-Title": "QuizAI" };
+    const orH      = { Authorization: `Bearer ${orKey}`, "HTTP-Referer": "https://quizai.dev", "X-Title": "QuizAI" };
 
-    // ── Attempt list — each returns {name, content} or throws ────────────────
+    // Log which keys are available (without revealing values)
+    console.log(`[Keys] Gemini:${!!process.env.GOOGLE_AI_API_KEY} Groq1:${!!groqKey1} Groq2:${!!groqKey2} Groq3:${!!groqKey3} OR:${!!orKey}`);
+
     type Attempt = { name: string; fn: () => Promise<string> };
     const attempts: Attempt[] = [];
 
-    // 1. Google Gemini FREE — 1500 req/day, very generous
+    // ── 1. Google Gemini — FREE 1500 req/day ──────────────────────────────────
     if (process.env.GOOGLE_AI_API_KEY) {
-      attempts.push({ name: "Gemini-2.0-Flash", fn: () => callGemini(userPrompt, maxTokens) });
+      attempts.push({ name: "Gemini", fn: () => callGemini(userPrompt, maxTokens) });
     }
 
-    // 2. Groq keys (up to 3 accounts)
-    for (const [i, key] of [[1,groqKey1],[2,groqKey2],[3,groqKey3]] as [number,string][]) {
+    // ── 2. Groq (up to 3 keys × 2 models) ────────────────────────────────────
+    for (const [i, key] of [[1, groqKey1], [2, groqKey2], [3, groqKey3]] as [number, string][]) {
       if (!key) continue;
       attempts.push(
-        { name: `Groq-K${i} Llama4-Maverick`, fn: () => callOpenAICompat(groqUrl, { Authorization: `Bearer ${key}` }, "meta-llama/llama-4-maverick-17b-128e-instruct", messages, maxTokens) },
-        { name: `Groq-K${i} Qwen3-32B`,       fn: () => callOpenAICompat(groqUrl, { Authorization: `Bearer ${key}` }, "qwen/qwen3-32b", messages, maxTokens) },
+        { name: `Groq-K${i}-Maverick`, fn: () => callOpenAICompat(`Groq-K${i}-Maverick`, groqUrl, { Authorization: `Bearer ${key}` }, "llama3-70b-8192", messages, maxTokens) },
+        { name: `Groq-K${i}-Qwen3`,    fn: () => callOpenAICompat(`Groq-K${i}-Qwen3`,    groqUrl, { Authorization: `Bearer ${key}` }, "gemma2-9b-it", messages, maxTokens) },
       );
     }
 
-    // 3. OpenRouter free models (correct names as of 2026)
+    // ── 3. OpenRouter — only confirmed free models ────────────────────────────
     if (orKey) {
       attempts.push(
-        { name: "OR Gemini-2.0-Flash",  fn: () => callOpenAICompat(orUrl, orHeaders, "google/gemini-2.0-flash-exp:free", messages, maxTokens) },
-        { name: "OR Qwen3-235B",        fn: () => callOpenAICompat(orUrl, orHeaders, "qwen/qwen3-235b-a22b:free", messages, maxTokens) },
-        { name: "OR Llama3.3-70B",      fn: () => callOpenAICompat(orUrl, orHeaders, "meta-llama/llama-3.3-70b-instruct:free", messages, maxTokens) },
+        { name: "OR-Qwen3-235B",   fn: () => callOpenAICompat("OR-Qwen3-235B",   orUrl, orH, "deepseek/deepseek-r1:free", messages, maxTokens) },
+        { name: "OR-Gemini-Flash", fn: () => callOpenAICompat("OR-Gemini-Flash", orUrl, orH, "microsoft/mai-ds-r1:free", messages, maxTokens) },
+        { name: "OR-DeepSeek-R1",  fn: () => callOpenAICompat("OR-DeepSeek-R1",  orUrl, orH, "deepseek/deepseek-r1:free", messages, maxTokens) },
       );
     }
 
@@ -219,16 +236,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No AI API keys configured." }, { status: 500 });
     }
 
-    // ── Try sequentially but fast — 429s fail in <1s so still fits 10s limit ─
     let lastError = "";
     for (const attempt of attempts) {
       try {
-        console.log(`Trying ${attempt.name}...`);
+        console.log(`[Quiz] Trying ${attempt.name}...`);
         const content = await attempt.fn();
         const questions = parseQuestions(content);
         if (!Array.isArray(questions) || questions.length === 0) throw new Error("Empty array");
 
-        console.log(`✅ Success: ${attempt.name}`);
+        console.log(`[Quiz] ✅ Success: ${attempt.name}`);
 
         if (profile.is_pro) {
           const { error: insertError } = await supabaseSSR.from("quizzes").insert({
@@ -241,11 +257,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ questions, modelUsed: attempt.name });
       } catch (err: any) {
         lastError = err.message;
-        console.log(`❌ ${attempt.name}: ${err.message}`);
+        console.log(`[Quiz] ❌ ${attempt.name}: ${err.message}`);
         continue;
       }
     }
 
+    console.error("[Quiz] All models exhausted. Last error:", lastError);
     return NextResponse.json(
       { error: "Our AI is taking a short break. Please try again in a few minutes." },
       { status: 429 }
