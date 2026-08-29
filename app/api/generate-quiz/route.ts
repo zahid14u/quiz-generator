@@ -78,12 +78,13 @@ async function callGemini(prompt: string, maxTokens: number): Promise<string> {
   console.log(`[Gemini] Key starts with: ${apiKey.substring(0, 6)}...`);
 
   // Try gemini-2.0-flash first, then gemini-1.5-flash as fallback
-  const models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+  const models = ["gemini-3.6-flash"];
 
   for (const model of models) {
     const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 9000);
+    const t = setTimeout(() => controller.abort(), 12000);
     try {
+      const apiVersion = model === "gemini-3.6-flash" ? "v1beta" : "v1beta";
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
@@ -130,7 +131,7 @@ async function callOpenAICompat(
   maxTokens: number
 ): Promise<string> {
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 9000);
+  const t = setTimeout(() => controller.abort(), 12000);
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -218,17 +219,17 @@ export async function POST(request: NextRequest) {
     for (const [i, key] of [[1, groqKey1], [2, groqKey2], [3, groqKey3]] as [number, string][]) {
       if (!key) continue;
       attempts.push(
-        { name: `Groq-K${i}-Maverick`, fn: () => callOpenAICompat(`Groq-K${i}-Maverick`, groqUrl, { Authorization: `Bearer ${key}` }, "llama3-70b-8192", messages, maxTokens) },
-        { name: `Groq-K${i}-Qwen3`,    fn: () => callOpenAICompat(`Groq-K${i}-Qwen3`,    groqUrl, { Authorization: `Bearer ${key}` }, "gemma2-9b-it", messages, maxTokens) },
+        { name: `Groq-K${i}-Maverick`, fn: () => callOpenAICompat(`Groq-K${i}-Maverick`, groqUrl, { Authorization: `Bearer ${key}` }, "openai/gpt-oss-120b", messages, maxTokens) },
+        { name: `Groq-K${i}-Qwen3`,    fn: () => callOpenAICompat(`Groq-K${i}-Qwen3`,    groqUrl, { Authorization: `Bearer ${key}` }, "qwen/qwen3.6-27b", messages, maxTokens) },
       );
     }
 
     // ── 3. OpenRouter — only confirmed free models ────────────────────────────
     if (orKey) {
       attempts.push(
-        { name: "OR-Qwen3-235B",   fn: () => callOpenAICompat("OR-Qwen3-235B",   orUrl, orH, "deepseek/deepseek-r1:free", messages, maxTokens) },
-        { name: "OR-Gemini-Flash", fn: () => callOpenAICompat("OR-Gemini-Flash", orUrl, orH, "microsoft/mai-ds-r1:free", messages, maxTokens) },
-        { name: "OR-DeepSeek-R1",  fn: () => callOpenAICompat("OR-DeepSeek-R1",  orUrl, orH, "deepseek/deepseek-r1:free", messages, maxTokens) },
+        { name: "OR-Qwen3-235B",   fn: () => callOpenAICompat("OR-Qwen3-235B",   orUrl, orH, "amazon/nova-2-lite-v1:free", messages, maxTokens) },
+        { name: "OR-Gemini-Flash", fn: () => callOpenAICompat("OR-Gemini-Flash", orUrl, orH, "z-ai/glm-4.5-air:free", messages, maxTokens) },
+        { name: "OR-DeepSeek-R1",  fn: () => callOpenAICompat("OR-DeepSeek-R1",  orUrl, orH, "amazon/nova-2-lite-v1:free", messages, maxTokens) },
       );
     }
 
