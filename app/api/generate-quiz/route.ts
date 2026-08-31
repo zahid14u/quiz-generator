@@ -70,26 +70,28 @@ function parseQuestions(rawContent: string) {
   }
 }
 
-// ── Google Gemini — tries both API versions for compatibility ─────────────────
+// ── Google Gemini — fixed with correct header and model names ────────────────
 async function callGemini(prompt: string, maxTokens: number): Promise<string> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) throw new Error("No GOOGLE_AI_API_KEY");
 
   console.log(`[Gemini] Key starts with: ${apiKey.substring(0, 6)}...`);
 
-  // Try gemini-2.0-flash first, then gemini-1.5-flash as fallback
-  const models = ["gemini-3.6-flash"];
+  // Current working models as of Aug 2026 — gemini-2.5-flash is stable
+  const models = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-2.0-flash-lite"];
 
   for (const model of models) {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 12000);
     try {
-      const apiVersion = model === "gemini-3.6-flash" ? "v1beta" : "v1beta";
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,  // ✅ correct header format
+          },
           body: JSON.stringify({
             contents: [{ parts: [{ text: systemPrompt + "\n\n" + prompt }] }],
             generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
@@ -102,7 +104,7 @@ async function callGemini(prompt: string, maxTokens: number): Promise<string> {
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
         console.log(`[Gemini] ${model} failed ${res.status}: ${JSON.stringify(e)}`);
-        continue; // try next model
+        continue;
       }
 
       const data = await res.json();
@@ -113,7 +115,7 @@ async function callGemini(prompt: string, maxTokens: number): Promise<string> {
     } catch (err: any) {
       clearTimeout(t);
       if (err.name === "AbortError") { console.log(`[Gemini] ${model} timeout`); continue; }
-      if (err.message.includes("Cannot parse") || err.message.includes("Empty")) throw err;
+      if (err.message.includes("Empty Gemini")) throw err;
       console.log(`[Gemini] ${model} error: ${err.message}`);
       continue;
     }
@@ -131,7 +133,7 @@ async function callOpenAICompat(
   maxTokens: number
 ): Promise<string> {
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 12000);
+  const t = setTimeout(() => controller.abort(), 9000);
   try {
     const res = await fetch(url, {
       method: "POST",
